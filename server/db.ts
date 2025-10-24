@@ -1,6 +1,6 @@
 import { eq } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/mysql2";
-import { InsertUser, users } from "../drizzle/schema";
+import { InsertUser, users, modules, InsertModule, pdfFiles, InsertPdfFile } from "../drizzle/schema";
 import { ENV } from './_core/env';
 
 let _db: ReturnType<typeof drizzle> | null = null;
@@ -89,4 +89,57 @@ export async function getUserByOpenId(openId: string) {
   return result.length > 0 ? result[0] : undefined;
 }
 
-// TODO: add feature queries here as your schema grows.
+// Module queries
+export async function getAllModules() {
+  const db = await getDb();
+  if (!db) return [];
+  return await db.select().from(modules);
+}
+
+export async function createModule(data: InsertModule) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const result = await db.insert(modules).values(data);
+  return result;
+}
+
+export async function deleteModule(id: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  // Delete associated PDF files first
+  await db.delete(pdfFiles).where(eq(pdfFiles.moduleId, id));
+  await db.delete(modules).where(eq(modules.id, id));
+}
+
+// PDF file queries
+export async function getPdfFilesByModule(moduleId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  return await db.select().from(pdfFiles).where(eq(pdfFiles.moduleId, moduleId));
+}
+
+export async function getPdfFileById(id: number) {
+  const db = await getDb();
+  if (!db) return undefined;
+  const result = await db.select().from(pdfFiles).where(eq(pdfFiles.id, id)).limit(1);
+  return result.length > 0 ? result[0] : undefined;
+}
+
+export async function createPdfFile(data: InsertPdfFile) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const result = await db.insert(pdfFiles).values(data);
+  return result;
+}
+
+export async function updatePdfAnnotations(id: number, annotations: string) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db.update(pdfFiles).set({ annotations }).where(eq(pdfFiles.id, id));
+}
+
+export async function deletePdfFile(id: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db.delete(pdfFiles).where(eq(pdfFiles.id, id));
+}

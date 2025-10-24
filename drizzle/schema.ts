@@ -25,4 +25,34 @@ export const users = mysqlTable("users", {
 export type User = typeof users.$inferSelect;
 export type InsertUser = typeof users.$inferInsert;
 
-// TODO: Add your tables here
+/**
+ * Modules table for organizing lecture slides by subject
+ */
+export const modules = mysqlTable("modules", {
+  id: int("id").autoincrement().primaryKey(),
+  name: varchar("name", { length: 255 }).notNull(),
+  color: varchar("color", { length: 7 }).default("#3b82f6").notNull(), // hex color for UI
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
+export type Module = typeof modules.$inferSelect;
+export type InsertModule = typeof modules.$inferInsert;
+
+/**
+ * PDF files table for storing lecture slides
+ */
+export const pdfFiles = mysqlTable("pdfFiles", {
+  id: int("id").autoincrement().primaryKey(),
+  moduleId: int("moduleId").notNull(),
+  fileName: varchar("fileName", { length: 255 }).notNull(),
+  fileKey: varchar("fileKey", { length: 512 }).notNull(), // S3 key
+  fileUrl: text("fileUrl").notNull(), // S3 URL
+  fileSize: int("fileSize").notNull(), // in bytes
+  annotations: text("annotations"), // JSON string for highlights and pen strokes
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
+export type PdfFile = typeof pdfFiles.$inferSelect;
+export type InsertPdfFile = typeof pdfFiles.$inferInsert;

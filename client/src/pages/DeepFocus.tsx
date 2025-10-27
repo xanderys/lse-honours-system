@@ -124,6 +124,7 @@ export default function DeepFocus() {
     }
   });
   const [isResizingThumbnail, setIsResizingThumbnail] = useState(false);
+  const [selectedThumbnail, setSelectedThumbnail] = useState<number | null>(null);
   
   // Zoom control state
   const [showZoomDropdown, setShowZoomDropdown] = useState(false);
@@ -1245,8 +1246,9 @@ export default function DeepFocus() {
     toast.info(`Jumped to page ${pageNumber}`);
   };
 
-  // Handle thumbnail click - jump to page
+  // Handle thumbnail click - select thumbnail and jump to page
   const handleThumbnailClick = (pageNumber: number) => {
+    setSelectedThumbnail(pageNumber);
     setCurrentPage(pageNumber);
     
     // Scroll to page if in continuous mode
@@ -1281,12 +1283,12 @@ export default function DeepFocus() {
     }
   };
 
-  // Handle thumbnail keyboard navigation
+  // Handle thumbnail keyboard navigation - navigate selection without jumping pages
   const handleThumbnailKeyDown = (e: React.KeyboardEvent, pageNum: number) => {
     if (e.key === "ArrowUp") {
       e.preventDefault();
       if (pageNum > 1) {
-        handleThumbnailClick(pageNum - 1);
+        setSelectedThumbnail(pageNum - 1);
         // Focus the previous thumbnail
         setTimeout(() => {
           const thumbnailButtons = document.querySelectorAll('.thumbnail-button');
@@ -1297,7 +1299,7 @@ export default function DeepFocus() {
     } else if (e.key === "ArrowDown") {
       e.preventDefault();
       if (pageNum < totalPages) {
-        handleThumbnailClick(pageNum + 1);
+        setSelectedThumbnail(pageNum + 1);
         // Focus the next thumbnail
         setTimeout(() => {
           const thumbnailButtons = document.querySelectorAll('.thumbnail-button');
@@ -1305,6 +1307,10 @@ export default function DeepFocus() {
           if (nextButton) nextButton.focus();
         }, 50);
       }
+    } else if (e.key === "Enter") {
+      e.preventDefault();
+      // Navigate to the selected page
+      handleThumbnailClick(pageNum);
     }
   };
 
@@ -1835,7 +1841,8 @@ export default function DeepFocus() {
                   <div className="p-2 space-y-2">
                     {Array.from({ length: totalPages }, (_, i) => i + 1).map((pageNum) => {
                       const thumbnail = thumbnails.get(pageNum);
-                      const isActive = pageNum === currentPage;
+                      const isSelected = pageNum === selectedThumbnail;
+                      const isCurrentPage = pageNum === currentPage;
                       
                       return (
                         <button
@@ -1843,8 +1850,10 @@ export default function DeepFocus() {
                           onClick={() => handleThumbnailClick(pageNum)}
                           onKeyDown={(e) => handleThumbnailKeyDown(e, pageNum)}
                           className={`thumbnail-button w-full group relative rounded-md overflow-hidden transition-all ${
-                            isActive
+                            isSelected
                               ? "ring-2 ring-primary shadow-lg"
+                              : isCurrentPage
+                              ? "ring-2 ring-muted-foreground/40 shadow-md"
                               : "hover:ring-2 hover:ring-primary/50 shadow-sm"
                           }`}
                         >
@@ -1860,8 +1869,10 @@ export default function DeepFocus() {
                             </div>
                           )}
                           <div className={`absolute bottom-0 left-0 right-0 text-center py-1 text-xs font-medium ${
-                            isActive
+                            isSelected
                               ? "bg-primary text-primary-foreground"
+                              : isCurrentPage
+                              ? "bg-muted-foreground/60 text-white"
                               : "bg-black/60 text-white group-hover:bg-black/80"
                           }`}>
                             {pageNum}

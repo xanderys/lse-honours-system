@@ -1074,24 +1074,40 @@ export default function DeepFocus() {
 
   // Prevent arrow key scrolling in thumbnail sidebar
   useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      const sidebar = thumbnailSidebarRef.current;
-      if (!sidebar) return;
+    const sidebar = thumbnailSidebarRef.current;
+    if (!sidebar) return;
 
+    let isNavigating = false;
+    
+    const handleKeyDown = (e: KeyboardEvent) => {
       // Check if focused element is within the thumbnail sidebar
       const activeElement = document.activeElement;
       if (activeElement && sidebar.contains(activeElement)) {
         if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
           e.preventDefault();
           e.stopPropagation();
+          isNavigating = true;
+          // Reset flag after a short delay
+          setTimeout(() => { isNavigating = false; }, 100);
         }
+      }
+    };
+
+    const handleScroll = (e: Event) => {
+      // Prevent scrolling when navigating with arrow keys
+      if (isNavigating) {
+        e.preventDefault();
+        e.stopPropagation();
       }
     };
 
     // Attach to document level to catch all keyboard events early
     document.addEventListener("keydown", handleKeyDown, { passive: false, capture: true });
+    sidebar.addEventListener("scroll", handleScroll, { passive: false, capture: true });
+    
     return () => {
       document.removeEventListener("keydown", handleKeyDown, { capture: true });
+      sidebar.removeEventListener("scroll", handleScroll, { capture: true });
     };
   }, []);
 

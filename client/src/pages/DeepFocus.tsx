@@ -1075,9 +1075,12 @@ export default function DeepFocus() {
   // Prevent arrow key scrolling in thumbnail sidebar
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      // Only prevent if focus is on a thumbnail button
+      const sidebar = thumbnailSidebarRef.current;
+      if (!sidebar) return;
+
+      // Check if focused element is within the thumbnail sidebar
       const activeElement = document.activeElement;
-      if (activeElement && activeElement.classList.contains('thumbnail-button')) {
+      if (activeElement && sidebar.contains(activeElement)) {
         if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
           e.preventDefault();
           e.stopPropagation();
@@ -1085,14 +1088,11 @@ export default function DeepFocus() {
       }
     };
 
-    const sidebar = thumbnailSidebarRef.current;
-    if (sidebar) {
-      // Use capture phase to intercept before browser scrolls
-      sidebar.addEventListener("keydown", handleKeyDown, { passive: false, capture: true });
-      return () => {
-        sidebar.removeEventListener("keydown", handleKeyDown, { capture: true });
-      };
-    }
+    // Attach to document level to catch all keyboard events early
+    document.addEventListener("keydown", handleKeyDown, { passive: false, capture: true });
+    return () => {
+      document.removeEventListener("keydown", handleKeyDown, { capture: true });
+    };
   }, []);
 
   // Smooth zoom animation using lerp

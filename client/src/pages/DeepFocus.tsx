@@ -346,7 +346,9 @@ export default function DeepFocus() {
 
       pages.forEach((page, idx) => {
         const pageNum = pagesToRender[idx];
-      const viewport = page.getViewport({ scale });
+        // Get device pixel ratio for high DPI displays
+        const dpr = window.devicePixelRatio || 1;
+        const viewport = page.getViewport({ scale });
 
         // Create page container
         const pageContainer = document.createElement("div");
@@ -355,11 +357,15 @@ export default function DeepFocus() {
         pageContainer.style.margin = viewMode === "double" ? "0 10px" : "0 auto";
         pageContainer.style.display = viewMode === "double" ? "inline-block" : "block";
 
-        // Create canvas
+        // Create canvas with high DPI support
         const canvas = document.createElement("canvas");
         canvas.className = "pdf-canvas shadow-lg bg-white";
-      canvas.height = viewport.height;
-      canvas.width = viewport.width;
+        // Set canvas internal size to account for device pixel ratio
+        canvas.height = viewport.height * dpr;
+        canvas.width = viewport.width * dpr;
+        // Set CSS display size to logical pixels
+        canvas.style.width = `${viewport.width}px`;
+        canvas.style.height = `${viewport.height}px`;
         canvas.dataset.pageNumber = pageNum.toString();
 
         // Create text layer for text selection
@@ -377,7 +383,7 @@ export default function DeepFocus() {
           pointer-events: auto;
         `;
 
-        // Create annotation overlay canvas
+        // Create annotation overlay canvas with high DPI support
         const annotationCanvas = document.createElement("canvas");
         const toolClass = tool === "pen" ? "tool-pen" : tool === "eraser" ? "tool-eraser" : "tool-none";
         annotationCanvas.className = `pdf-annotation-layer ${toolClass}`;
@@ -386,8 +392,11 @@ export default function DeepFocus() {
           left: 0;
           top: 0;
         `;
-        annotationCanvas.height = viewport.height;
-        annotationCanvas.width = viewport.width;
+        // Set annotation canvas size with DPI scaling
+        annotationCanvas.height = viewport.height * dpr;
+        annotationCanvas.width = viewport.width * dpr;
+        annotationCanvas.style.width = `${viewport.width}px`;
+        annotationCanvas.style.height = `${viewport.height}px`;
         annotationCanvas.dataset.pageNumber = pageNum.toString();
 
         pageContainer.appendChild(canvas);
@@ -419,12 +428,16 @@ export default function DeepFocus() {
       if (isCancelled) return;
 
       // Now render all pages (PDF content and text layers) in parallel
+      const dpr = window.devicePixelRatio || 1;
       await Promise.all(
         pageElements.map(async ({ page, viewport, canvas, textLayerDiv }) => {
           if (isCancelled) return;
           
-          // Render PDF content
-      const context = canvas.getContext("2d")!;
+          // Render PDF content with DPI scaling
+          const context = canvas.getContext("2d", { alpha: false, willReadFrequently: false })!;
+          // Scale context to match device pixel ratio
+          context.scale(dpr, dpr);
+          
           try {
             await page.render({ canvasContext: context, viewport }).promise;
           } catch (error) {
@@ -638,31 +651,44 @@ export default function DeepFocus() {
 
   // Render annotations on all visible pages (scale normalized coordinates to current zoom)
   useEffect(() => {
+    const dpr = window.devicePixelRatio || 1;
     renderedPages.forEach((pageInfo) => {
       const canvas = pageInfo.canvas;
-      const context = canvas.getContext("2d")!;
+      const context = canvas.getContext("2d", { alpha: true, willReadFrequently: true })!;
+      
+      // Clear with DPI scaling
+      context.save();
+      context.setTransform(1, 0, 0, 1, 0, 0); // Reset transform
       context.clearRect(0, 0, canvas.width, canvas.height);
+      context.restore();
+      
+      // Scale context for DPI
+      context.scale(dpr, dpr);
 
       const pageAnnotations = annotations.filter((a) => a.pageNumber === pageInfo.pageNumber);
+      
+      // Get logical dimensions (CSS pixels)
+      const logicalWidth = canvas.width / dpr;
+      const logicalHeight = canvas.height / dpr;
       
       pageAnnotations.forEach((annotation) => {
         if (annotation.type === "highlight") {
           context.fillStyle = "rgba(255, 255, 0, 0.3)";
-          // Scale normalized coordinates (0-1) to current canvas dimensions
+          // Scale normalized coordinates (0-1) to logical canvas dimensions
           context.fillRect(
-            annotation.data.x * canvas.width,
-            annotation.data.y * canvas.height,
-            annotation.data.width * canvas.width,
-            annotation.data.height * canvas.height
+            annotation.data.x * logicalWidth,
+            annotation.data.y * logicalHeight,
+            annotation.data.width * logicalWidth,
+            annotation.data.height * logicalHeight
           );
         } else if (annotation.type === "pen") {
           context.strokeStyle = annotation.data.color || "#000";
           context.lineWidth = (annotation.data.width || 2) * scale; // Scale line width with zoom
           context.beginPath();
           annotation.data.points.forEach((point: any, index: number) => {
-            // Scale normalized coordinates to current canvas dimensions
-            const x = point.x * canvas.width;
-            const y = point.y * canvas.height;
+            // Scale normalized coordinates to logical canvas dimensions
+            const x = point.x * logicalWidth;
+            const y = point.y * logicalHeight;
             if (index === 0) {
               context.moveTo(x, y);
             } else {
@@ -877,9 +903,17 @@ export default function DeepFocus() {
 
     const canvas = pageInfo.canvas;
     const context = canvas.getContext("2d")!;
+    const dpr = window.devicePixelRatio || 1;
     
-    // Re-render all annotations plus current drawing
+    // Re-render all annotations plus current drawing with DPI scaling
+    context.save();
+    context.setTransform(1, 0, 0, 1, 0, 0);
     context.clearRect(0, 0, canvas.width, canvas.height);
+    context.restore();
+    context.scale(dpr, dpr);
+    
+    const logicalWidth = canvas.width / dpr;
+    const logicalHeight = canvas.height / dpr;
     
     const pageAnnotations = annotations.filter((a) => a.pageNumber === currentDrawing.pageNumber);
     [...pageAnnotations, currentDrawing].forEach((annotation) => {
@@ -888,9 +922,9 @@ export default function DeepFocus() {
         context.lineWidth = (annotation.data.width || 2) * scale; // Scale line width
         context.beginPath();
         annotation.data.points.forEach((point: any, index: number) => {
-          // Scale normalized coordinates to canvas dimensions
-          const x = point.x * canvas.width;
-          const y = point.y * canvas.height;
+          // Scale normalized coordinates to logical canvas dimensions
+          const x = point.x * logicalWidth;
+          const y = point.y * logicalHeight;
           if (index === 0) {
             context.moveTo(x, y);
           } else {
@@ -1024,14 +1058,18 @@ export default function DeepFocus() {
     return () => document.removeEventListener('keydown', handleKeyDown);
   }, []);
 
-  // Handle trackpad/mouse wheel zoom
+  // Handle trackpad/mouse wheel zoom with instant response
   useEffect(() => {
     let zoomResetTimer: NodeJS.Timeout | null = null;
 
     const handleWheel = (e: WheelEvent) => {
-      // Detect pinch-to-zoom: ctrlKey is set on macOS trackpad pinch
-      // Also check for actual pinch events (some browsers)
-      const isPinchZoom = e.ctrlKey || e.metaKey;
+      // Improved Safari/macOS pinch detection:
+      // - ctrlKey is always set for trackpad pinch on macOS/Safari
+      // - Check for small deltaY values (fine-grained pinch gestures)
+      // - deltaMode === 0 means pixel-based scrolling (trackpad)
+      const isPinchZoom = 
+        e.ctrlKey || // Safari/Chrome pinch gesture
+        (Math.abs(e.deltaY) > 0 && e.deltaMode === 0 && Math.abs(e.deltaY) < 50);
       
       if (isPinchZoom) {
         e.preventDefault();
@@ -1045,19 +1083,23 @@ export default function DeepFocus() {
         // Mark as zooming
         isZooming.current = true;
         
-        // Calculate zoom factor
-        // Negative deltaY means zoom in, positive means zoom out
+        // Calculate zoom factor with better sensitivity
         const delta = -e.deltaY;
-        const zoomFactor = delta > 0 ? 1.05 : 0.95;
+        const zoomFactor = delta > 0 ? 1.02 : 0.98; // Smaller steps for smoother zoom
         
-        setTargetScale((prev) => Math.max(0.5, Math.min(3, prev * zoomFactor)));
+        // Apply zoom instantly (no lerp animation)
+        setScale((prev) => {
+          const newScale = Math.max(0.5, Math.min(3, prev * zoomFactor));
+          setTargetScale(newScale); // Keep targetScale in sync
+          return newScale;
+        });
         
-        // Reset zooming flag after user stops zooming
+        // Reset zooming flag after user stops zooming (reduced timeout)
         if (zoomResetTimer) clearTimeout(zoomResetTimer);
         zoomResetTimer = setTimeout(() => {
           isZooming.current = false;
           zoomResetTimer = null;
-        }, 300);
+        }, 100);
       }
     };
 
@@ -1111,37 +1153,8 @@ export default function DeepFocus() {
     };
   }, []);
 
-  // Smooth zoom animation using lerp
-  useEffect(() => {
-    let animationFrameId: number;
-    
-    const animate = () => {
-      setScale((currentScale) => {
-        const diff = targetScale - currentScale;
-        
-        // If close enough, snap to target
-        if (Math.abs(diff) < 0.001) {
-          return targetScale;
-        }
-        
-        // Linear interpolation for smooth animation
-        const newScale = currentScale + diff * 0.15;
-        animationFrameId = requestAnimationFrame(animate);
-        return newScale;
-      });
-    };
-    
-    // Start animation if target differs from current
-    if (Math.abs(targetScale - scale) > 0.001) {
-      animationFrameId = requestAnimationFrame(animate);
-    }
-    
-    return () => {
-      if (animationFrameId) {
-        cancelAnimationFrame(animationFrameId);
-      }
-    };
-  }, [targetScale, scale]);
+  // Removed lerp animation - now using instant zoom for better responsiveness
+  // The zoom is applied directly in the wheel event handler
 
   // View mode cycling
   const cycleViewMode = () => {
@@ -1390,7 +1403,7 @@ export default function DeepFocus() {
       setTargetScale(newScale);
       setTimeout(() => {
         isZooming.current = false;
-      }, 300);
+      }, 100);
     }
     setIsEditingZoom(false);
     setZoomInputValue("");
@@ -1823,7 +1836,7 @@ export default function DeepFocus() {
             setTargetScale(newScale);
             setTimeout(() => {
               isZooming.current = false;
-            }, 300);
+            }, 100);
           }} className="h-8 w-8">
             <ZoomOut className="h-4 w-4" />
           </Button>
@@ -1886,7 +1899,7 @@ export default function DeepFocus() {
             setTargetScale(newScale);
             setTimeout(() => {
               isZooming.current = false;
-            }, 300);
+            }, 100);
           }} className="h-8 w-8">
             <ZoomIn className="h-4 w-4" />
           </Button>

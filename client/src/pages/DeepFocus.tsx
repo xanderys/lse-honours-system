@@ -97,6 +97,7 @@ export default function DeepFocus() {
   
   // Virtual scrolling state
   const [visiblePages, setVisiblePages] = useState<Set<number>>(new Set());
+  const lastRenderedRange = useRef<{min: number, max: number}>({min: 0, max: 0});
   const BUFFER_PAGES = 3; // Number of pages to render before/after visible area
   
   // Resizable layout state
@@ -331,7 +332,18 @@ export default function DeepFocus() {
           const visibleArray = Array.from(visiblePages).sort((a, b) => a - b);
           const minPage = Math.max(1, Math.min(...visibleArray) - BUFFER_PAGES);
           const maxPage = Math.min(totalPages, Math.max(...visibleArray) + BUFFER_PAGES);
-          pagesToRender = Array.from({ length: maxPage - minPage + 1 }, (_, i) => minPage + i);
+          
+          // Only re-render if the range has significantly changed (moved by 2+ pages)
+          if (Math.abs(minPage - lastRenderedRange.current.min) > 2 || 
+              Math.abs(maxPage - lastRenderedRange.current.max) > 2 ||
+              lastRenderedRange.current.min === 0) {
+            lastRenderedRange.current = {min: minPage, max: maxPage};
+            pagesToRender = Array.from({ length: maxPage - minPage + 1 }, (_, i) => minPage + i);
+          } else {
+            // Use the last rendered range to avoid unnecessary re-renders
+            const { min, max } = lastRenderedRange.current;
+            pagesToRender = Array.from({ length: max - min + 1 }, (_, i) => min + i);
+          }
         }
       } else if (viewMode === "single") {
         // Render only current page
@@ -387,7 +399,7 @@ export default function DeepFocus() {
         const pageNum = pagesToRender[idx];
         // Get device pixel ratio for high DPI displays
         const dpr = window.devicePixelRatio || 1;
-        const viewport = page.getViewport({ scale });
+      const viewport = page.getViewport({ scale });
 
         // Find or create page container
         let pageContainer: HTMLDivElement;
@@ -1162,13 +1174,10 @@ export default function DeepFocus() {
     let zoomResetTimer: NodeJS.Timeout | null = null;
 
     const handleWheel = (e: WheelEvent) => {
-      // Improved Safari/macOS pinch detection:
-      // - ctrlKey is always set for trackpad pinch on macOS/Safari
-      // - Check for small deltaY values (fine-grained pinch gestures)
-      // - deltaMode === 0 means pixel-based scrolling (trackpad)
-      const isPinchZoom = 
-        e.ctrlKey || // Safari/Chrome pinch gesture
-        (Math.abs(e.deltaY) > 0 && e.deltaMode === 0 && Math.abs(e.deltaY) < 50);
+      // Strict pinch detection - ONLY ctrlKey means pinch zoom
+      // ctrlKey is set by browser for trackpad pinch on all platforms
+      // Do NOT check deltaY or deltaMode as those catch regular scrolling
+      const isPinchZoom = e.ctrlKey;
       
       if (isPinchZoom) {
         e.preventDefault();

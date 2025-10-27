@@ -1329,25 +1329,51 @@ export default function DeepFocus() {
       e.preventDefault();
       e.stopPropagation();
       if (pageNum > 1) {
+        // Save current scroll position
+        const sidebar = thumbnailSidebarRef.current;
+        const currentScrollTop = sidebar?.scrollTop || 0;
+        
         handleThumbnailClick(pageNum - 1);
-        // Focus the previous thumbnail WITHOUT scrolling
-        setTimeout(() => {
-          const thumbnailButtons = document.querySelectorAll('.thumbnail-button');
-          const prevButton = thumbnailButtons[pageNum - 2] as HTMLButtonElement;
-          if (prevButton) prevButton.focus({ preventScroll: true });
-        }, 10);
+        
+        // Use requestAnimationFrame to ensure scroll restoration happens after any browser scrolling
+        requestAnimationFrame(() => {
+          requestAnimationFrame(() => {
+            const thumbnailButtons = document.querySelectorAll('.thumbnail-button');
+            const prevButton = thumbnailButtons[pageNum - 2] as HTMLButtonElement;
+            if (prevButton) {
+              prevButton.focus({ preventScroll: true });
+            }
+            // Force restore scroll position
+            if (sidebar) {
+              sidebar.scrollTop = currentScrollTop;
+            }
+          });
+        });
       }
     } else if (e.key === "ArrowDown") {
       e.preventDefault();
       e.stopPropagation();
       if (pageNum < totalPages) {
+        // Save current scroll position
+        const sidebar = thumbnailSidebarRef.current;
+        const currentScrollTop = sidebar?.scrollTop || 0;
+        
         handleThumbnailClick(pageNum + 1);
-        // Focus the next thumbnail WITHOUT scrolling
-        setTimeout(() => {
-          const thumbnailButtons = document.querySelectorAll('.thumbnail-button');
-          const nextButton = thumbnailButtons[pageNum] as HTMLButtonElement;
-          if (nextButton) nextButton.focus({ preventScroll: true });
-        }, 10);
+        
+        // Use requestAnimationFrame to ensure scroll restoration happens after any browser scrolling
+        requestAnimationFrame(() => {
+          requestAnimationFrame(() => {
+            const thumbnailButtons = document.querySelectorAll('.thumbnail-button');
+            const nextButton = thumbnailButtons[pageNum] as HTMLButtonElement;
+            if (nextButton) {
+              nextButton.focus({ preventScroll: true });
+            }
+            // Force restore scroll position
+            if (sidebar) {
+              sidebar.scrollTop = currentScrollTop;
+            }
+          });
+        });
       }
     }
   };
@@ -1875,7 +1901,7 @@ export default function DeepFocus() {
                 <div 
                   ref={thumbnailSidebarRef}
                   className="border-r bg-background overflow-y-auto flex-shrink-0"
-                  style={{ width: `${thumbnailWidth}%` }}
+                  style={{ width: `${thumbnailWidth}%`, scrollBehavior: 'auto' }}
                 >
                   <div className="p-2 space-y-2">
                     {Array.from({ length: totalPages }, (_, i) => i + 1).map((pageNum) => {

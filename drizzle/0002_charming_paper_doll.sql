@@ -1,0 +1,1 @@
+ALTER TABLE `pdfFiles` ADD `extractedText` text;

@@ -15,6 +15,13 @@
       "when": 1761329848813,
       "tag": "0001_young_jazinda",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "5",
+      "when": 1761579097274,
+      "tag": "0002_charming_paper_doll",
+      "breakpoints": true
     }
   ]
 }

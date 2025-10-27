@@ -4,7 +4,7 @@ import { trpc } from "@/lib/trpc";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Textarea } from "@/components/ui/textarea";
-import { ArrowLeft, ZoomIn, ZoomOut, Highlighter, Pen, Send, Settings, X } from "lucide-react";
+import { ArrowLeft, ZoomIn, ZoomOut, Highlighter, Pen, Send, Settings, X, Square } from "lucide-react";
 import { toast } from "sonner";
 import * as pdfjsLib from "pdfjs-dist";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -214,24 +214,39 @@ export default function DeepFocus() {
 
   const chatMutation = trpc.chat.sendMessage.useMutation({
     onSuccess: (data) => {
-      setChatMessages((prev) => [...prev, { role: "assistant", content: data.message }]);
+      setChatMessages((prev) => {
+        // Remove loading message and add actual response
+        const withoutLoading = prev.filter(m => m.content !== "...");
+        return [...withoutLoading, { role: "assistant", content: data.message }];
+      });
     },
     onError: (error) => {
+      setChatMessages((prev) => prev.filter(m => m.content !== "..."));
       toast.error(`Chat error: ${error.message}`);
     },
   });
 
   const sendChatMessage = () => {
-    if (!chatInput.trim()) return;
+    if (!chatInput.trim() || chatMutation.isPending) return;
     const userMessage = chatInput;
     setChatInput("");
-    setChatMessages((prev) => [...prev, { role: "user", content: userMessage }]);
+    setChatMessages((prev) => [
+      ...prev,
+      { role: "user", content: userMessage },
+      { role: "assistant", content: "..." } // Loading placeholder
+    ]);
     
     chatMutation.mutate({
       fileId,
       messages: [...chatMessages, { role: "user", content: userMessage }],
       systemPrompt,
     });
+  };
+
+  const stopGeneration = () => {
+    // Note: tRPC doesn't support request cancellation easily
+    // This is a placeholder for future implementation
+    toast.info("Response generation cannot be stopped once started");
   };
 
   if (!file) {
@@ -379,7 +394,15 @@ export default function DeepFocus() {
                         : "bg-muted mr-4"
                     }`}
                   >
-                    <p className="text-sm">{msg.content}</p>
+                    {msg.content === "..." ? (
+                      <div className="flex gap-1">
+                        <span className="animate-bounce">.</span>
+                        <span className="animate-bounce" style={{ animationDelay: "0.1s" }}>.</span>
+                        <span className="animate-bounce" style={{ animationDelay: "0.2s" }}>.</span>
+                      </div>
+                    ) : (
+                      <p className="text-sm whitespace-pre-wrap">{msg.content}</p>
+                    )}
                   </div>
                 ))
               )}
@@ -398,9 +421,15 @@ export default function DeepFocus() {
                 className="resize-none"
                 rows={2}
               />
-              <Button size="icon" onClick={sendChatMessage}>
-                <Send className="h-4 w-4" />
-              </Button>
+              {chatMutation.isPending ? (
+                <Button size="icon" variant="destructive" onClick={stopGeneration}>
+                  <Square className="h-4 w-4" />
+                </Button>
+              ) : (
+                <Button size="icon" onClick={sendChatMessage} disabled={!chatInput.trim()}>
+                  <Send className="h-4 w-4" />
+                </Button>
+              )}
             </div>
           </div>
         </div>

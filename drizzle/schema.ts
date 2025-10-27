@@ -50,6 +50,7 @@ export const pdfFiles = mysqlTable("pdfFiles", {
   fileUrl: text("fileUrl").notNull(), // S3 URL
   fileSize: int("fileSize").notNull(), // in bytes
   annotations: text("annotations"), // JSON string for highlights and pen strokes
+  extractedText: text("extractedText"), // Cached PDF text for RAG
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
 });

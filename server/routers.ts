@@ -53,33 +53,49 @@ export const appRouter = router({
       .mutation(async ({ input }) => {
         const { getPdfFileById } = await import("./db");
         const { chatWithPDF } = await import("./openai");
-        const pdfjsLib = await import("pdfjs-dist/legacy/build/pdf.mjs");
+        const { getDb } = await import("./db");
+        const { pdfFiles } = await import("../drizzle/schema");
+        const { eq } = await import("drizzle-orm");
         
         const file = await getPdfFileById(input.fileId);
         if (!file) {
           throw new Error("PDF file not found");
         }
         
-        // Fetch PDF content from S3
-        const response = await fetch(file.fileUrl);
-        const arrayBuffer = await response.arrayBuffer();
+        let pdfText = file.extractedText;
         
-        // Extract text from PDF using pdfjs
-        const loadingTask = pdfjsLib.getDocument({ data: arrayBuffer });
-        const pdfDoc = await loadingTask.promise;
-        
-        let fullText = "";
-        for (let i = 1; i <= pdfDoc.numPages; i++) {
-          const page = await pdfDoc.getPage(i);
-          const textContent = await page.getTextContent();
-          const pageText = textContent.items.map((item: any) => item.str).join(" ");
-          fullText += pageText + "\n";
+        // If text not cached, extract and cache it
+        if (!pdfText) {
+          const pdfjsLib = await import("pdfjs-dist/legacy/build/pdf.mjs");
+          const response = await fetch(file.fileUrl);
+          const arrayBuffer = await response.arrayBuffer();
+          
+          const loadingTask = pdfjsLib.getDocument({ data: arrayBuffer });
+          const pdfDoc = await loadingTask.promise;
+          
+          let fullText = "";
+          for (let i = 1; i <= pdfDoc.numPages; i++) {
+            const page = await pdfDoc.getPage(i);
+            const textContent = await page.getTextContent();
+            const pageText = textContent.items.map((item: any) => item.str).join(" ");
+            fullText += pageText + "\n";
+          }
+          
+          pdfText = fullText;
+          
+          // Cache the extracted text
+          const db = await getDb();
+          if (db) {
+            await db.update(pdfFiles)
+              .set({ extractedText: fullText })
+              .where(eq(pdfFiles.id, input.fileId));
+          }
         }
         
         // Get AI response
         const assistantMessage = await chatWithPDF({
           messages: input.messages,
-          pdfText: fullText,
+          pdfText,
           systemPrompt: input.systemPrompt,
         });
         

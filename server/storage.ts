@@ -1,9 +1,14 @@
-// Preconfigured storage helpers for Manus WebDev templates
-// Uses the Biz-provided storage proxy (Authorization: Bearer <token>)
-
+// Storage helpers - supports local filesystem or cloud storage
 import { ENV } from './_core/env';
+import { promises as fs } from 'fs';
+import path from 'path';
 
 type StorageConfig = { baseUrl: string; apiKey: string };
+
+// Check if we should use Forge/cloud storage or local storage
+function shouldUseCloudStorage(): boolean {
+  return !!(ENV.forgeApiUrl && ENV.forgeApiKey);
+}
 
 function getStorageConfig(): StorageConfig {
   const baseUrl = ENV.forgeApiUrl;
@@ -67,7 +72,72 @@ function buildAuthHeaders(apiKey: string): HeadersInit {
   return { Authorization: `Bearer ${apiKey}` };
 }
 
-export async function storagePut(
+// ============================================
+// LOCAL STORAGE FUNCTIONS
+// ============================================
+
+const LOCAL_STORAGE_DIR = '.local-storage';
+
+async function ensureLocalStorageDir() {
+  try {
+    await fs.mkdir(LOCAL_STORAGE_DIR, { recursive: true });
+  } catch (error) {
+    console.error('Failed to create local storage directory:', error);
+  }
+}
+
+async function localStoragePut(
+  relKey: string,
+  data: Buffer | Uint8Array | string,
+  contentType = "application/octet-stream"
+): Promise<{ key: string; url: string }> {
+  await ensureLocalStorageDir();
+  
+  const key = normalizeKey(relKey);
+  const filePath = path.join(LOCAL_STORAGE_DIR, key);
+  
+  // Create subdirectories if needed
+  const dir = path.dirname(filePath);
+  await fs.mkdir(dir, { recursive: true });
+  
+  // Write file
+  const buffer = typeof data === 'string' ? Buffer.from(data) : Buffer.from(data);
+  await fs.writeFile(filePath, buffer);
+  
+  // Return URL (served by express.static in server/_core/index.ts)
+  const url = `/storage/${key}`;
+  
+  return { key, url };
+}
+
+async function localStorageGet(relKey: string): Promise<{ key: string; url: string }> {
+  const key = normalizeKey(relKey);
+  const url = `/storage/${key}`;
+  return { key, url };
+}
+
+// Helper to get local file path from storage key (for server-side file access)
+export async function getLocalFilePath(relKey: string): Promise<string | null> {
+  if (shouldUseCloudStorage()) {
+    return null; // Not using local storage
+  }
+  const key = normalizeKey(relKey);
+  const filePath = path.join(LOCAL_STORAGE_DIR, key);
+  
+  // Check if file exists
+  try {
+    await fs.access(filePath);
+    return path.resolve(filePath);
+  } catch {
+    return null;
+  }
+}
+
+// ============================================
+// CLOUD STORAGE FUNCTIONS
+// ============================================
+
+async function cloudStoragePut(
   relKey: string,
   data: Buffer | Uint8Array | string,
   contentType = "application/octet-stream"
@@ -92,11 +162,35 @@ export async function storagePut(
   return { key, url };
 }
 
-export async function storageGet(relKey: string): Promise<{ key: string; url: string; }> {
+async function cloudStorageGet(relKey: string): Promise<{ key: string; url: string }> {
   const { baseUrl, apiKey } = getStorageConfig();
   const key = normalizeKey(relKey);
   return {
     key,
     url: await buildDownloadUrl(baseUrl, key, apiKey),
   };
+}
+
+// ============================================
+// EXPORTED PUBLIC API
+// ============================================
+
+export async function storagePut(
+  relKey: string,
+  data: Buffer | Uint8Array | string,
+  contentType = "application/octet-stream"
+): Promise<{ key: string; url: string }> {
+  if (shouldUseCloudStorage()) {
+    return cloudStoragePut(relKey, data, contentType);
+  } else {
+    return localStoragePut(relKey, data, contentType);
+  }
+}
+
+export async function storageGet(relKey: string): Promise<{ key: string; url: string }> {
+  if (shouldUseCloudStorage()) {
+    return cloudStorageGet(relKey);
+  } else {
+    return localStorageGet(relKey);
+  }
 }

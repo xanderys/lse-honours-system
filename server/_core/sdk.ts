@@ -201,7 +201,7 @@ class SDKServer {
     cookieValue: string | undefined | null
   ): Promise<{ openId: string; appId: string; name: string } | null> {
     if (!cookieValue) {
-      console.warn("[Auth] Missing session cookie");
+      // Silent fail - authentication is optional for public procedures
       return null;
     }
 
@@ -227,7 +227,10 @@ class SDKServer {
         name,
       };
     } catch (error) {
-      console.warn("[Auth] Session verification failed", String(error));
+      // Only log in development to avoid spam
+      if (ENV.isProduction === false) {
+        console.warn("[Auth] Session verification failed:", String(error));
+      }
       return null;
     }
   }

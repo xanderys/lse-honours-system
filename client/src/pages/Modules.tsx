@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
-import { Plus, Trash2, FolderOpen } from "lucide-react";
+import { Plus, Trash2, FolderOpen, Pencil } from "lucide-react";
 import { useLocation } from "wouter";
 import { toast } from "sonner";
 
@@ -22,6 +22,11 @@ export default function Modules() {
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [moduleName, setModuleName] = useState("");
   const [selectedColor, setSelectedColor] = useState(PRESET_COLORS[0]);
+  
+  // Rename dialog state
+  const [renameDialogOpen, setRenameDialogOpen] = useState(false);
+  const [renameModuleId, setRenameModuleId] = useState<number | null>(null);
+  const [renameValue, setRenameValue] = useState("");
 
   const utils = trpc.useUtils();
   const { data: modules = [], isLoading } = trpc.modules.list.useQuery();
@@ -36,6 +41,17 @@ export default function Modules() {
     },
     onError: () => {
       toast.error("Failed to create module");
+    },
+  });
+
+  const renameMutation = trpc.modules.update.useMutation({
+    onSuccess: () => {
+      utils.modules.list.invalidate();
+      setRenameDialogOpen(false);
+      toast.success("Module renamed successfully");
+    },
+    onError: () => {
+      toast.error("Failed to rename module");
     },
   });
 
@@ -55,6 +71,21 @@ export default function Modules() {
       return;
     }
     createMutation.mutate({ name: moduleName, color: selectedColor });
+  };
+
+  const handleRename = () => {
+    if (!renameValue.trim()) {
+      toast.error("Please enter a module name");
+      return;
+    }
+    if (renameModuleId === null) return;
+    renameMutation.mutate({ id: renameModuleId, name: renameValue });
+  };
+
+  const openRenameDialog = (id: number, currentName: string) => {
+    setRenameModuleId(id);
+    setRenameValue(currentName);
+    setRenameDialogOpen(true);
   };
 
   const handleDelete = (id: number, name: string) => {
@@ -150,17 +181,30 @@ export default function Modules() {
                       />
                       <CardTitle className="text-xl">{module.name}</CardTitle>
                     </div>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="opacity-0 group-hover:opacity-100 transition-opacity"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        handleDelete(module.id, module.name);
-                      }}
-                    >
-                      <Trash2 className="h-4 w-4 text-destructive" />
-                    </Button>
+                    <div className="flex gap-1">
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="opacity-0 group-hover:opacity-100 transition-opacity"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          openRenameDialog(module.id, module.name);
+                        }}
+                      >
+                        <Pencil className="h-4 w-4" />
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="opacity-0 group-hover:opacity-100 transition-opacity"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleDelete(module.id, module.name);
+                        }}
+                      >
+                        <Trash2 className="h-4 w-4 text-destructive" />
+                      </Button>
+                    </div>
                   </div>
                 </CardHeader>
                 <CardContent>
@@ -177,6 +221,29 @@ export default function Modules() {
           </div>
         )}
       </div>
+
+      {/* Rename Dialog */}
+      <Dialog open={renameDialogOpen} onOpenChange={setRenameDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Rename Module</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 pt-4">
+            <div>
+              <label className="text-sm font-medium mb-2 block">Module Name</label>
+              <Input
+                placeholder="Enter new module name"
+                value={renameValue}
+                onChange={(e) => setRenameValue(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && handleRename()}
+              />
+            </div>
+            <Button onClick={handleRename} className="w-full" disabled={renameMutation.isPending}>
+              {renameMutation.isPending ? "Renaming..." : "Rename Module"}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

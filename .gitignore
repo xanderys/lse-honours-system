@@ -105,3 +105,6 @@ temp/
 *.db
 *.sqlite
 *.sqlite3
+
+# Local file storage for development
+.local-storage/

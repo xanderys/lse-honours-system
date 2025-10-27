@@ -169,4 +169,91 @@
       max-width: 1280px; /* Standard content width */
     }
   }
+
+  /* PDF Viewer Styles */
+  .pdf-page-container {
+    position: relative;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  }
+
+  .pdf-text-layer {
+    position: absolute;
+    left: 0;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    overflow: hidden;
+    line-height: 1.0;
+  }
+
+  .pdf-text-layer > div {
+    color: transparent;
+    position: absolute;
+    white-space: pre;
+    cursor: text;
+    transform-origin: 0% 0%;
+  }
+
+  .pdf-text-layer ::selection {
+    background: rgba(0, 123, 255, 0.3);
+  }
+
+  .pdf-annotation-layer {
+    position: absolute;
+    left: 0;
+    top: 0;
+    pointer-events: auto;
+  }
+
+  .pdf-annotation-layer.tool-pen {
+    cursor: crosshair;
+  }
+
+  .pdf-annotation-layer.tool-eraser {
+    cursor: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m7 21-4.3-4.3c-1-1-1-2.5 0-3.4l9.6-9.6c1-1 2.5-1 3.4 0l5.6 5.6c1 1 1 2.5 0 3.4L13 21"/><path d="M22 21H7"/><path d="m5 11 9 9"/></svg>') 4 20, pointer;
+  }
+
+  .pdf-annotation-layer.tool-none {
+    cursor: default;
+    pointer-events: none;
+  }
+
+  .pdf-canvas {
+    display: block;
+    user-select: none;
+  }
+
+  /* Resize handles */
+  .cursor-col-resize {
+    cursor: col-resize !important;
+  }
+
+  .cursor-row-resize {
+    cursor: row-resize !important;
+  }
+
+  /* Prevent text selection during resize */
+  body.resizing {
+    user-select: none !important;
+    cursor: col-resize !important;
+  }
+
+  body.resizing-vertical {
+    user-select: none !important;
+    cursor: row-resize !important;
+  }
+
+  /* Drag and drop styles */
+  .cursor-move {
+    cursor: move !important;
+  }
+
+  [draggable="true"] {
+    -webkit-user-drag: element;
+  }
+
+  .dragging {
+    opacity: 0.5;
+    transform: scale(0.95);
+  }
 }

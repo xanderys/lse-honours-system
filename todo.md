@@ -15,6 +15,7 @@
 
 ## Bugs to Fix
 - [x] Fix "require is not defined" error in chat functionality (pdf-parse import issue)
+- [x] Fix PDF not rendering in Deep Focus mode (blank white canvas)
 
 ## Future Enhancements
 - [ ] Implement actual highlight text detection

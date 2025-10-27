@@ -1314,11 +1314,11 @@ export default function DeepFocus() {
       e.stopPropagation();
       if (pageNum > 1) {
         handleThumbnailClick(pageNum - 1);
-        // Focus the previous thumbnail
+        // Focus the previous thumbnail WITHOUT scrolling
         setTimeout(() => {
           const thumbnailButtons = document.querySelectorAll('.thumbnail-button');
           const prevButton = thumbnailButtons[pageNum - 2] as HTMLButtonElement;
-          if (prevButton) prevButton.focus();
+          if (prevButton) prevButton.focus({ preventScroll: true });
         }, 10);
       }
     } else if (e.key === "ArrowDown") {
@@ -1326,11 +1326,11 @@ export default function DeepFocus() {
       e.stopPropagation();
       if (pageNum < totalPages) {
         handleThumbnailClick(pageNum + 1);
-        // Focus the next thumbnail
+        // Focus the next thumbnail WITHOUT scrolling
         setTimeout(() => {
           const thumbnailButtons = document.querySelectorAll('.thumbnail-button');
           const nextButton = thumbnailButtons[pageNum] as HTMLButtonElement;
-          if (nextButton) nextButton.focus();
+          if (nextButton) nextButton.focus({ preventScroll: true });
         }, 10);
       }
     }

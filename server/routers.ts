@@ -53,6 +53,7 @@ export const appRouter = router({
       .mutation(async ({ input }) => {
         const { getPdfFileById } = await import("./db");
         const { chatWithPDF } = await import("./openai");
+        const pdfjsLib = await import("pdfjs-dist/legacy/build/pdf.mjs");
         
         const file = await getPdfFileById(input.fileId);
         if (!file) {
@@ -62,16 +63,23 @@ export const appRouter = router({
         // Fetch PDF content from S3
         const response = await fetch(file.fileUrl);
         const arrayBuffer = await response.arrayBuffer();
-        const buffer = Buffer.from(arrayBuffer);
         
-        // Parse PDF text
-        const pdfParse = require("pdf-parse");
-        const pdfData = await pdfParse(buffer);
+        // Extract text from PDF using pdfjs
+        const loadingTask = pdfjsLib.getDocument({ data: arrayBuffer });
+        const pdfDoc = await loadingTask.promise;
+        
+        let fullText = "";
+        for (let i = 1; i <= pdfDoc.numPages; i++) {
+          const page = await pdfDoc.getPage(i);
+          const textContent = await page.getTextContent();
+          const pageText = textContent.items.map((item: any) => item.str).join(" ");
+          fullText += pageText + "\n";
+        }
         
         // Get AI response
         const assistantMessage = await chatWithPDF({
           messages: input.messages,
-          pdfText: pdfData.text,
+          pdfText: fullText,
           systemPrompt: input.systemPrompt,
         });
         

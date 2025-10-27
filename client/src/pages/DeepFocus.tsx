@@ -62,6 +62,7 @@ export default function DeepFocus() {
   const containerRef = useRef<HTMLDivElement>(null);
   const pagesContainerRef = useRef<HTMLDivElement>(null);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
+  const thumbnailSidebarRef = useRef<HTMLDivElement>(null);
   const hasRestoredScroll = useRef(false);
   const isZooming = useRef(false);
   const savedScrollRatio = useRef<number>(0);
@@ -1071,6 +1072,29 @@ export default function DeepFocus() {
     }
   }, []);
 
+  // Prevent arrow key scrolling in thumbnail sidebar
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Only prevent if focus is on a thumbnail button
+      const activeElement = document.activeElement;
+      if (activeElement && activeElement.classList.contains('thumbnail-button')) {
+        if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
+          e.preventDefault();
+          e.stopPropagation();
+        }
+      }
+    };
+
+    const sidebar = thumbnailSidebarRef.current;
+    if (sidebar) {
+      // Use capture phase to intercept before browser scrolls
+      sidebar.addEventListener("keydown", handleKeyDown, { passive: false, capture: true });
+      return () => {
+        sidebar.removeEventListener("keydown", handleKeyDown, { capture: true });
+      };
+    }
+  }, []);
+
   // Smooth zoom animation using lerp
   useEffect(() => {
     let animationFrameId: number;
@@ -1833,14 +1857,9 @@ export default function DeepFocus() {
             {showThumbnails && (
               <>
                 <div 
+                  ref={thumbnailSidebarRef}
                   className="border-r bg-background overflow-y-auto flex-shrink-0"
                   style={{ width: `${thumbnailWidth}%` }}
-                  onKeyDown={(e) => {
-                    // Prevent arrow keys from scrolling the sidebar
-                    if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
-                      e.preventDefault();
-                    }
-                  }}
                 >
                   <div className="p-2 space-y-2">
                     {Array.from({ length: totalPages }, (_, i) => i + 1).map((pageNum) => {

@@ -1835,6 +1835,12 @@ export default function DeepFocus() {
                 <div 
                   className="border-r bg-background overflow-y-auto flex-shrink-0"
                   style={{ width: `${thumbnailWidth}%` }}
+                  onKeyDown={(e) => {
+                    // Prevent arrow keys from scrolling the sidebar
+                    if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
+                      e.preventDefault();
+                    }
+                  }}
                 >
                   <div className="p-2 space-y-2">
                     {Array.from({ length: totalPages }, (_, i) => i + 1).map((pageNum) => {

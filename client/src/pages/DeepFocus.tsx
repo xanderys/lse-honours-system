@@ -95,6 +95,10 @@ export default function DeepFocus() {
   const [renderedPages, setRenderedPages] = useState<Map<number, PageRenderInfo>>(new Map());
   const [erasedIds, setErasedIds] = useState<Set<string>>(new Set());
   
+  // Virtual scrolling state
+  const [visiblePages, setVisiblePages] = useState<Set<number>>(new Set());
+  const BUFFER_PAGES = 3; // Number of pages to render before/after visible area
+  
   // Resizable layout state
   const [sidebarWidth, setSidebarWidth] = useState(33.33); // percentage
   const [questionsHeight, setQuestionsHeight] = useState(50); // percentage of sidebar height
@@ -312,22 +316,57 @@ export default function DeepFocus() {
       const newRenderedPages = new Map<number, PageRenderInfo>();
       
       let pagesToRender: number[] = [];
+      let pagesToCreatePlaceholder: number[] = [];
       
       if (viewMode === "continuous") {
-        // Render all pages
-        pagesToRender = Array.from({ length: totalPages }, (_, i) => i + 1);
+        // Create placeholders for ALL pages to maintain scroll height
+        pagesToCreatePlaceholder = Array.from({ length: totalPages }, (_, i) => i + 1);
+        
+        // But only render content for visible pages + buffer
+        if (visiblePages.size === 0) {
+          // Initial load: render first few pages
+          pagesToRender = Array.from({ length: Math.min(BUFFER_PAGES * 2 + 1, totalPages) }, (_, i) => i + 1);
+        } else {
+          // Render visible pages + buffer
+          const visibleArray = Array.from(visiblePages).sort((a, b) => a - b);
+          const minPage = Math.max(1, Math.min(...visibleArray) - BUFFER_PAGES);
+          const maxPage = Math.min(totalPages, Math.max(...visibleArray) + BUFFER_PAGES);
+          pagesToRender = Array.from({ length: maxPage - minPage + 1 }, (_, i) => minPage + i);
+        }
       } else if (viewMode === "single") {
         // Render only current page
         pagesToRender = [currentPage];
+        pagesToCreatePlaceholder = [currentPage];
       } else if (viewMode === "double") {
         // Render current page and next page
         pagesToRender = [currentPage];
         if (currentPage < totalPages) {
           pagesToRender.push(currentPage + 1);
         }
+        pagesToCreatePlaceholder = pagesToRender;
       }
 
-      // Fetch all pages first to ensure they're loaded
+      // Create placeholders first
+      if (viewMode === "continuous") {
+        // Get first page to calculate dimensions
+        const firstPage = await pdfDoc.getPage(1);
+        const viewport = firstPage.getViewport({ scale });
+        
+        pagesToCreatePlaceholder.forEach((pageNum) => {
+          const pageContainer = document.createElement("div");
+          pageContainer.className = "pdf-page-container relative mb-4";
+          pageContainer.setAttribute('data-page-number', pageNum.toString());
+          pageContainer.style.width = `${viewport.width}px`;
+          pageContainer.style.height = `${viewport.height}px`;
+          pageContainer.style.margin = "0 auto";
+          pageContainer.style.display = "block";
+          pageContainer.style.backgroundColor = "#f3f4f6"; // Light gray placeholder
+          
+          container.appendChild(pageContainer);
+        });
+      }
+
+      // Fetch pages that need actual content
       const pagePromises = pagesToRender.map(pageNum => pdfDoc.getPage(pageNum));
       const pages = await Promise.all(pagePromises);
 
@@ -350,12 +389,36 @@ export default function DeepFocus() {
         const dpr = window.devicePixelRatio || 1;
         const viewport = page.getViewport({ scale });
 
-        // Create page container
-        const pageContainer = document.createElement("div");
-        pageContainer.className = "pdf-page-container relative mb-4";
+        // Find or create page container
+        let pageContainer: HTMLDivElement;
+        if (viewMode === "continuous") {
+          // Find existing placeholder
+          pageContainer = container.querySelector(`[data-page-number="${pageNum}"]`) as HTMLDivElement;
+          if (pageContainer) {
+            // Clear placeholder styling and content
+            pageContainer.style.backgroundColor = "";
+            pageContainer.innerHTML = "";
+          } else {
+            // Fallback: create new container if placeholder not found
+            pageContainer = document.createElement("div");
+            pageContainer.className = "pdf-page-container relative mb-4";
+            pageContainer.setAttribute('data-page-number', pageNum.toString());
+            pageContainer.style.margin = "0 auto";
+            container.appendChild(pageContainer);
+          }
+        } else {
+          // For single/double mode, create new container
+          pageContainer = document.createElement("div");
+          pageContainer.className = "pdf-page-container relative mb-4";
+          pageContainer.setAttribute('data-page-number', pageNum.toString());
+          pageContainer.style.margin = viewMode === "double" ? "0 10px" : "0 auto";
+          pageContainer.style.display = viewMode === "double" ? "inline-block" : "block";
+          container.appendChild(pageContainer);
+        }
+
+        // Update container dimensions
         pageContainer.style.width = `${viewport.width}px`;
-        pageContainer.style.margin = viewMode === "double" ? "0 10px" : "0 auto";
-        pageContainer.style.display = viewMode === "double" ? "inline-block" : "block";
+        pageContainer.style.height = `${viewport.height}px`;
 
         // Create canvas with high DPI support
         const canvas = document.createElement("canvas");
@@ -402,7 +465,6 @@ export default function DeepFocus() {
         pageContainer.appendChild(canvas);
         pageContainer.appendChild(textLayerDiv);
         pageContainer.appendChild(annotationCanvas);
-        container.appendChild(pageContainer);
 
         pageElements.push({
           pageNum,
@@ -490,7 +552,7 @@ export default function DeepFocus() {
     return () => {
       isCancelled = true;
     };
-  }, [pdfDoc, scale, viewMode, currentPage, totalPages]);
+  }, [pdfDoc, scale, viewMode, currentPage, totalPages, visiblePages]);
 
   // Generate thumbnails for all pages
   useEffect(() => {
@@ -528,6 +590,43 @@ export default function DeepFocus() {
 
     generateThumbnails();
   }, [pdfDoc, totalPages]);
+
+  // IntersectionObserver for virtual scrolling in continuous mode
+  useEffect(() => {
+    if (viewMode !== "continuous" || !pagesContainerRef.current) return;
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        entries.forEach((entry) => {
+          const pageNum = parseInt(entry.target.getAttribute('data-page-number') || '0');
+          if (!pageNum) return;
+
+          setVisiblePages((prev) => {
+            const next = new Set(prev);
+            if (entry.isIntersecting) {
+              next.add(pageNum);
+            } else {
+              next.delete(pageNum);
+            }
+            return next;
+          });
+        });
+      },
+      {
+        root: scrollContainerRef.current,
+        rootMargin: '400px', // Start loading pages 400px before they're visible
+        threshold: 0,
+      }
+    );
+
+    // Observe all page containers
+    const pageContainers = pagesContainerRef.current.querySelectorAll('.pdf-page-container');
+    pageContainers.forEach((page) => observer.observe(page));
+
+    return () => {
+      observer.disconnect();
+    };
+  }, [viewMode, renderedPages]);
 
   // Restore scroll position after zoom re-render completes (centered on viewport)
   useEffect(() => {

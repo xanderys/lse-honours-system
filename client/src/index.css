@@ -256,4 +256,38 @@
     opacity: 0.5;
     transform: scale(0.95);
   }
+
+  /* PDF Scrollbar Styles */
+  .pdf-scroll-container::-webkit-scrollbar {
+    width: 12px;
+    height: 12px;
+  }
+
+  .pdf-scroll-container::-webkit-scrollbar-track {
+    background: oklch(0.95 0.001 286.375);
+  }
+
+  .pdf-scroll-container::-webkit-scrollbar-thumb {
+    background: oklch(0.65 0.01 286.375);
+    border-radius: 6px;
+    border: 2px solid oklch(0.95 0.001 286.375);
+  }
+
+  .pdf-scroll-container::-webkit-scrollbar-thumb:hover {
+    background: oklch(0.55 0.015 286.375);
+  }
+
+  /* Dark mode scrollbar */
+  .dark .pdf-scroll-container::-webkit-scrollbar-track {
+    background: oklch(0.21 0.006 285.885);
+  }
+
+  .dark .pdf-scroll-container::-webkit-scrollbar-thumb {
+    background: oklch(0.45 0.01 286.033);
+    border: 2px solid oklch(0.21 0.006 285.885);
+  }
+
+  .dark .pdf-scroll-container::-webkit-scrollbar-thumb:hover {
+    background: oklch(0.55 0.015 286.033);
+  }
 }

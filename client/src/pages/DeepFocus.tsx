@@ -4,6 +4,7 @@ import { trpc } from "@/lib/trpc";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Textarea } from "@/components/ui/textarea";
+import { Input } from "@/components/ui/input";
 import { ArrowLeft, ZoomIn, ZoomOut, Highlighter, Pen, Send, Settings, X, Square, Eraser, Columns2, FileText, ScrollText, PanelRightOpen, GripVertical, LayoutGrid } from "lucide-react";
 import { toast } from "sonner";
 import * as pdfjsLib from "pdfjs-dist";
@@ -62,6 +63,8 @@ export default function DeepFocus() {
   const pagesContainerRef = useRef<HTMLDivElement>(null);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const hasRestoredScroll = useRef(false);
+  const isZooming = useRef(false);
+  const savedScrollRatio = useRef<number>(0);
   const [pdfDoc, setPdfDoc] = useState<any>(null);
   const [currentPage, setCurrentPage] = useState(() => {
     try {
@@ -124,7 +127,14 @@ export default function DeepFocus() {
   
   // Zoom control state
   const [showZoomDropdown, setShowZoomDropdown] = useState(false);
+  const [targetScale, setTargetScale] = useState(scale);
+  const [isEditingZoom, setIsEditingZoom] = useState(false);
+  const [zoomInputValue, setZoomInputValue] = useState("");
   const zoomPresets = [50, 75, 100, 125, 150, 200, 300];
+  
+  // Page navigation state
+  const [isEditingPage, setIsEditingPage] = useState(false);
+  const [pageInputValue, setPageInputValue] = useState("");
   
   const MIN_SIDEBAR_WIDTH = 20; // 20% minimum
   const COLLAPSE_THRESHOLD = 15; // collapse if dragged below 15%
@@ -412,7 +422,7 @@ export default function DeepFocus() {
           if (isCancelled) return;
           
           // Render PDF content
-          const context = canvas.getContext("2d")!;
+      const context = canvas.getContext("2d")!;
           try {
             await page.render({ canvasContext: context, viewport }).promise;
           } catch (error) {
@@ -482,13 +492,13 @@ export default function DeepFocus() {
 
           const canvas = document.createElement('canvas');
           const context = canvas.getContext('2d');
-          canvas.height = viewport.height;
-          canvas.width = viewport.width;
+      canvas.height = viewport.height;
+      canvas.width = viewport.width;
 
           if (context) {
             await page.render({
-              canvasContext: context,
-              viewport: viewport,
+        canvasContext: context,
+        viewport: viewport,
             }).promise;
 
             newThumbnails.set(pageNum, canvas.toDataURL());
@@ -503,6 +513,40 @@ export default function DeepFocus() {
 
     generateThumbnails();
   }, [pdfDoc, totalPages]);
+
+  // Restore scroll position after zoom re-render completes (centered on viewport)
+  useEffect(() => {
+    if (!scrollContainerRef.current || !pagesContainerRef.current || viewMode !== "continuous") return;
+    if (!isZooming.current || savedScrollRatio.current === 0) return;
+    
+    // Wait for pages to finish rendering
+    const timer = setTimeout(() => {
+      const scrollContainer = scrollContainerRef.current;
+      const pagesContainer = pagesContainerRef.current;
+      if (!scrollContainer || !pagesContainer) return;
+      
+      const pageElements = pagesContainer.querySelectorAll(".pdf-page-container");
+      if (pageElements.length === 0) return;
+      
+      const currentPageElement = pageElements[currentPage - 1] as HTMLElement;
+      if (currentPageElement) {
+        const newPageHeight = currentPageElement.offsetHeight;
+        const newPageTop = currentPageElement.offsetTop;
+        
+        // Calculate the new position of the saved point
+        const newCenterPosition = newPageTop + (savedScrollRatio.current * newPageHeight);
+        
+        // Scroll so that point is at the center of the viewport
+        const viewportHalfHeight = scrollContainer.clientHeight / 2;
+        scrollContainer.scrollTop = newCenterPosition - viewportHalfHeight;
+      }
+      
+      // Clear saved ratio
+      savedScrollRatio.current = 0;
+    }, 150);
+    
+    return () => clearTimeout(timer);
+  }, [renderedPages, currentPage, viewMode]); // Trigger after pages render
 
   // Restore scroll position after rendering (only once on initial load)
   useEffect(() => {
@@ -524,7 +568,7 @@ export default function DeepFocus() {
     }, 100);
     
     return () => clearTimeout(timer);
-  }, [renderedPages, viewMode, currentPage]); // Include currentPage for initial load
+  }, [renderedPages, viewMode]); // Removed currentPage to prevent re-trigger
 
   // Track current page in continuous mode based on scroll position
   useEffect(() => {
@@ -533,6 +577,9 @@ export default function DeepFocus() {
     let scrollTimeout: NodeJS.Timeout | null = null;
 
     const handleScroll = () => {
+      // Don't track scroll during zoom operations
+      if (isZooming.current) return;
+      
       // Throttle scroll events for performance
       if (scrollTimeout) return;
       
@@ -587,7 +634,7 @@ export default function DeepFocus() {
     });
   }, [tool, renderedPages]);
 
-  // Render annotations on all visible pages
+  // Render annotations on all visible pages (scale normalized coordinates to current zoom)
   useEffect(() => {
     renderedPages.forEach((pageInfo) => {
       const canvas = pageInfo.canvas;
@@ -599,28 +646,32 @@ export default function DeepFocus() {
       pageAnnotations.forEach((annotation) => {
         if (annotation.type === "highlight") {
           context.fillStyle = "rgba(255, 255, 0, 0.3)";
+          // Scale normalized coordinates (0-1) to current canvas dimensions
           context.fillRect(
-            annotation.data.x,
-            annotation.data.y,
-            annotation.data.width,
-            annotation.data.height
+            annotation.data.x * canvas.width,
+            annotation.data.y * canvas.height,
+            annotation.data.width * canvas.width,
+            annotation.data.height * canvas.height
           );
         } else if (annotation.type === "pen") {
           context.strokeStyle = annotation.data.color || "#000";
-          context.lineWidth = annotation.data.width || 2;
+          context.lineWidth = (annotation.data.width || 2) * scale; // Scale line width with zoom
           context.beginPath();
           annotation.data.points.forEach((point: any, index: number) => {
+            // Scale normalized coordinates to current canvas dimensions
+            const x = point.x * canvas.width;
+            const y = point.y * canvas.height;
             if (index === 0) {
-              context.moveTo(point.x, point.y);
+              context.moveTo(x, y);
             } else {
-              context.lineTo(point.x, point.y);
+              context.lineTo(x, y);
             }
           });
           context.stroke();
         }
       });
     });
-  }, [annotations, renderedPages]);
+  }, [annotations, renderedPages, scale]);
 
   // Handle text selection for highlighting
   const handleTextSelection = useCallback(() => {
@@ -650,18 +701,29 @@ export default function DeepFocus() {
     const pageRect = (pageContainer as HTMLElement).getBoundingClientRect();
     const pageInfo = renderedPages.get(targetPageNum)!;
 
-    // Convert each rect to canvas coordinates
+    // Convert each rect to normalized coordinates (0-1 range)
     Array.from(rects).forEach((rect) => {
       const x = (rect.left - pageRect.left) * (pageInfo.viewport.width / pageRect.width);
       const y = (rect.top - pageRect.top) * (pageInfo.viewport.height / pageRect.height);
       const width = rect.width * (pageInfo.viewport.width / pageRect.width);
       const height = rect.height * (pageInfo.viewport.height / pageRect.height);
 
+      // Normalize to 0-1 range
+      const normalizedX = x / pageInfo.viewport.width;
+      const normalizedY = y / pageInfo.viewport.height;
+      const normalizedWidth = width / pageInfo.viewport.width;
+      const normalizedHeight = height / pageInfo.viewport.height;
+
       const newAnnotation: Annotation = {
         id: `highlight-${Date.now()}-${Math.random()}`,
         type: "highlight",
         pageNumber: targetPageNum!,
-        data: { x, y, width, height },
+        data: { 
+          x: normalizedX, 
+          y: normalizedY, 
+          width: normalizedWidth, 
+          height: normalizedHeight 
+        },
       };
 
       setAnnotations((prev) => [...prev, newAnnotation]);
@@ -682,28 +744,32 @@ export default function DeepFocus() {
     return () => document.removeEventListener("mouseup", handleMouseUp);
   }, [tool, handleTextSelection]);
 
-  // Helper function to check if point intersects with annotation
+  // Helper function to check if point intersects with annotation (using normalized coordinates)
   const checkAnnotationIntersection = (
-    x: number,
-    y: number,
+    normalizedX: number,
+    normalizedY: number,
     pageNum: number,
-    eraserRadius: number = 15
+    canvasWidth: number,
+    canvasHeight: number
   ): Annotation | null => {
+    // Eraser radius in normalized coordinates (relative to canvas size)
+    const eraserRadius = 15 / Math.min(canvasWidth, canvasHeight);
+    
     return annotations.find((a) => {
       if (a.pageNumber !== pageNum) return false;
       
       if (a.type === "highlight") {
-        // Check if point is inside highlight rectangle
+        // Check if point is inside highlight rectangle (normalized coords)
         return (
-          x >= a.data.x - eraserRadius &&
-          x <= a.data.x + a.data.width + eraserRadius &&
-          y >= a.data.y - eraserRadius &&
-          y <= a.data.y + a.data.height + eraserRadius
+          normalizedX >= a.data.x - eraserRadius &&
+          normalizedX <= a.data.x + a.data.width + eraserRadius &&
+          normalizedY >= a.data.y - eraserRadius &&
+          normalizedY <= a.data.y + a.data.height + eraserRadius
         );
       } else if (a.type === "pen") {
-        // Check if point is near any point in the pen stroke
+        // Check if point is near any point in the pen stroke (normalized coords)
         return a.data.points.some((point: any) => {
-          const dist = Math.sqrt(Math.pow(x - point.x, 2) + Math.pow(y - point.y, 2));
+          const dist = Math.sqrt(Math.pow(normalizedX - point.x, 2) + Math.pow(normalizedY - point.y, 2));
           return dist < eraserRadius;
         });
       }
@@ -726,12 +792,16 @@ export default function DeepFocus() {
     const x = (e.clientX - rect.left) * (canvas.width / rect.width);
     const y = (e.clientY - rect.top) * (canvas.height / rect.height);
 
+    // Normalize coordinates (0-1 range) for zoom independence
+    const normalizedX = x / canvas.width;
+    const normalizedY = y / canvas.height;
+
     if (tool === "eraser") {
       setIsErasing(true);
       setErasedIds(new Set());
       
       // Check for annotation to erase
-      const annotation = checkAnnotationIntersection(x, y, pageNum);
+      const annotation = checkAnnotationIntersection(normalizedX, normalizedY, pageNum, canvas.width, canvas.height);
       if (annotation && !erasedIds.has(annotation.id)) {
         setAnnotations((prev) => prev.filter((a) => a.id !== annotation.id));
         setErasedIds((prev) => new Set(prev).add(annotation.id));
@@ -742,7 +812,7 @@ export default function DeepFocus() {
         id: `pen-${Date.now()}-${Math.random()}`,
           type: "pen",
         pageNumber: pageNum,
-          data: { points: [{ x, y }], color: "#000", width: 2 },
+          data: { points: [{ x: normalizedX, y: normalizedY }], color: "#000", width: 2 },
       });
     }
   };
@@ -759,9 +829,13 @@ export default function DeepFocus() {
     const x = (e.clientX - rect.left) * (canvas.width / rect.width);
     const y = (e.clientY - rect.top) * (canvas.height / rect.height);
 
+    // Normalize coordinates (0-1 range)
+    const normalizedX = x / canvas.width;
+    const normalizedY = y / canvas.height;
+
     if (isErasing && tool === "eraser") {
       // Continuously check for annotations to erase while dragging
-      const annotation = checkAnnotationIntersection(x, y, pageNum);
+      const annotation = checkAnnotationIntersection(normalizedX, normalizedY, pageNum, canvas.width, canvas.height);
       if (annotation && !erasedIds.has(annotation.id)) {
         setAnnotations((prev) => prev.filter((a) => a.id !== annotation.id));
         setErasedIds((prev) => new Set(prev).add(annotation.id));
@@ -771,7 +845,7 @@ export default function DeepFocus() {
         ...prev,
         data: {
           ...prev.data,
-          points: [...prev.data.points, { x, y }],
+          points: [...prev.data.points, { x: normalizedX, y: normalizedY }],
         },
       }));
     }
@@ -792,7 +866,7 @@ export default function DeepFocus() {
     setIsErasing(false);
   };
 
-  // Render current drawing
+  // Render current drawing (scale normalized coordinates)
   useEffect(() => {
     if (!currentDrawing) return;
 
@@ -809,19 +883,22 @@ export default function DeepFocus() {
     [...pageAnnotations, currentDrawing].forEach((annotation) => {
       if (annotation.type === "pen") {
         context.strokeStyle = annotation.data.color || "#000";
-        context.lineWidth = annotation.data.width || 2;
+        context.lineWidth = (annotation.data.width || 2) * scale; // Scale line width
         context.beginPath();
         annotation.data.points.forEach((point: any, index: number) => {
+          // Scale normalized coordinates to canvas dimensions
+          const x = point.x * canvas.width;
+          const y = point.y * canvas.height;
           if (index === 0) {
-            context.moveTo(point.x, point.y);
+            context.moveTo(x, y);
           } else {
-            context.lineTo(point.x, point.y);
+            context.lineTo(x, y);
           }
         });
         context.stroke();
       }
     });
-  }, [currentDrawing, renderedPages, annotations]);
+  }, [currentDrawing, renderedPages, annotations, scale]);
 
   // Save annotations
   const saveAnnotations = useCallback(() => {
@@ -832,17 +909,17 @@ export default function DeepFocus() {
         annotations: JSON.stringify([]),
       });
     } else {
-      updateAnnotationsMutation.mutate({
-        id: fileId,
-        annotations: JSON.stringify(annotations),
-      });
+    updateAnnotationsMutation.mutate({
+      id: fileId,
+      annotations: JSON.stringify(annotations),
+    });
     }
   }, [annotations, fileId, updateAnnotationsMutation]);
 
   // Auto-save annotations after changes
   useEffect(() => {
-    const timeout = setTimeout(saveAnnotations, 1000);
-    return () => clearTimeout(timeout);
+      const timeout = setTimeout(saveAnnotations, 1000);
+      return () => clearTimeout(timeout);
   }, [annotations, saveAnnotations]);
 
   // Save zoom level to localStorage whenever it changes
@@ -945,41 +1022,85 @@ export default function DeepFocus() {
     return () => document.removeEventListener('keydown', handleKeyDown);
   }, []);
 
-  // Handle trackpad/mouse wheel zoom with debouncing
+  // Handle trackpad/mouse wheel zoom
   useEffect(() => {
-    let zoomTimeout: NodeJS.Timeout | null = null;
-    let pendingScale = scale;
+    let zoomResetTimer: NodeJS.Timeout | null = null;
 
     const handleWheel = (e: WheelEvent) => {
-      // Check if Ctrl/Cmd key is pressed (pinch gesture)
-      if (e.ctrlKey || e.metaKey) {
+      // Detect pinch-to-zoom: ctrlKey is set on macOS trackpad pinch
+      // Also check for actual pinch events (some browsers)
+      const isPinchZoom = e.ctrlKey || e.metaKey;
+      
+      if (isPinchZoom) {
         e.preventDefault();
+        e.stopPropagation();
         
+        // Save position BEFORE zoom (only on first zoom event)
+        if (!isZooming.current) {
+          saveScrollPositionForZoom();
+        }
+        
+        // Mark as zooming
+        isZooming.current = true;
+        
+        // Calculate zoom factor
+        // Negative deltaY means zoom in, positive means zoom out
         const delta = -e.deltaY;
         const zoomFactor = delta > 0 ? 1.05 : 0.95;
         
-        pendingScale = Math.max(0.5, Math.min(3, pendingScale * zoomFactor));
+        setTargetScale((prev) => Math.max(0.5, Math.min(3, prev * zoomFactor)));
         
-        // Debounce the scale update
-        if (zoomTimeout) {
-          clearTimeout(zoomTimeout);
-        }
-        
-        zoomTimeout = setTimeout(() => {
-          setScale(pendingScale);
-        }, 100);
+        // Reset zooming flag after user stops zooming
+        if (zoomResetTimer) clearTimeout(zoomResetTimer);
+        zoomResetTimer = setTimeout(() => {
+          isZooming.current = false;
+          zoomResetTimer = null;
+        }, 300);
       }
     };
 
     const container = containerRef.current;
     if (container) {
-      container.addEventListener("wheel", handleWheel, { passive: false });
+      // Use capture phase and prevent default
+      container.addEventListener("wheel", handleWheel, { passive: false, capture: true });
       return () => {
-        container.removeEventListener("wheel", handleWheel);
-        if (zoomTimeout) clearTimeout(zoomTimeout);
+        container.removeEventListener("wheel", handleWheel, { capture: true });
+        if (zoomResetTimer) clearTimeout(zoomResetTimer);
       };
     }
-  }, [scale]);
+  }, []);
+
+  // Smooth zoom animation using lerp
+  useEffect(() => {
+    let animationFrameId: number;
+    
+    const animate = () => {
+      setScale((currentScale) => {
+        const diff = targetScale - currentScale;
+        
+        // If close enough, snap to target
+        if (Math.abs(diff) < 0.001) {
+          return targetScale;
+        }
+        
+        // Linear interpolation for smooth animation
+        const newScale = currentScale + diff * 0.15;
+        animationFrameId = requestAnimationFrame(animate);
+        return newScale;
+      });
+    };
+    
+    // Start animation if target differs from current
+    if (Math.abs(targetScale - scale) > 0.001) {
+      animationFrameId = requestAnimationFrame(animate);
+    }
+    
+    return () => {
+      if (animationFrameId) {
+        cancelAnimationFrame(animationFrameId);
+      }
+    };
+  }, [targetScale, scale]);
 
   // View mode cycling
   const cycleViewMode = () => {
@@ -1138,6 +1259,111 @@ export default function DeepFocus() {
     }
   };
 
+  // Save scroll position before zoom (centered on viewport)
+  const saveScrollPositionForZoom = () => {
+    if (viewMode !== "continuous" || !scrollContainerRef.current || !pagesContainerRef.current) return;
+    
+    const scrollContainer = scrollContainerRef.current;
+    const pageElements = pagesContainerRef.current.querySelectorAll(".pdf-page-container");
+    if (pageElements.length === 0) return;
+    
+    // Calculate the center point of the viewport
+    const viewportCenter = scrollContainer.scrollTop + (scrollContainer.clientHeight / 2);
+    
+    // Find which page contains the viewport center
+    const currentPageElement = pageElements[currentPage - 1] as HTMLElement;
+    if (currentPageElement) {
+      const pageTop = currentPageElement.offsetTop;
+      const pageHeight = currentPageElement.offsetHeight;
+      const centerOffsetInPage = viewportCenter - pageTop;
+      const ratio = centerOffsetInPage / pageHeight;
+      savedScrollRatio.current = ratio;
+    }
+  };
+
+  // Handle thumbnail keyboard navigation
+  const handleThumbnailKeyDown = (e: React.KeyboardEvent, pageNum: number) => {
+    if (e.key === "ArrowUp") {
+      e.preventDefault();
+      if (pageNum > 1) {
+        handleThumbnailClick(pageNum - 1);
+        // Focus the previous thumbnail
+        setTimeout(() => {
+          const thumbnailButtons = document.querySelectorAll('.thumbnail-button');
+          const prevButton = thumbnailButtons[pageNum - 2] as HTMLButtonElement;
+          if (prevButton) prevButton.focus();
+        }, 50);
+      }
+    } else if (e.key === "ArrowDown") {
+      e.preventDefault();
+      if (pageNum < totalPages) {
+        handleThumbnailClick(pageNum + 1);
+        // Focus the next thumbnail
+        setTimeout(() => {
+          const thumbnailButtons = document.querySelectorAll('.thumbnail-button');
+          const nextButton = thumbnailButtons[pageNum] as HTMLButtonElement;
+          if (nextButton) nextButton.focus();
+        }, 50);
+      }
+    }
+  };
+
+  // Handle zoom input editing
+  const handleZoomInputBlur = () => {
+    const value = parseFloat(zoomInputValue);
+    if (!isNaN(value)) {
+      saveScrollPositionForZoom();
+      isZooming.current = true;
+      const clampedValue = Math.max(50, Math.min(300, value));
+      const newScale = clampedValue / 100;
+      setScale(newScale);
+      setTargetScale(newScale);
+      setTimeout(() => {
+        isZooming.current = false;
+      }, 300);
+    }
+    setIsEditingZoom(false);
+    setZoomInputValue("");
+  };
+
+  const handleZoomInputKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === "Enter") {
+      handleZoomInputBlur();
+    } else if (e.key === "Escape") {
+      setIsEditingZoom(false);
+      setZoomInputValue("");
+    }
+  };
+
+  // Handle page input editing
+  const handlePageInputBlur = () => {
+    const value = parseInt(pageInputValue);
+    if (!isNaN(value) && value >= 1 && value <= totalPages) {
+      setCurrentPage(value);
+      // Scroll to page if in continuous mode
+      if (viewMode === "continuous" && scrollContainerRef.current && pagesContainerRef.current) {
+        setTimeout(() => {
+          const pageElements = pagesContainerRef.current!.querySelectorAll(".pdf-page-container");
+          const targetPage = pageElements[value - 1];
+          if (targetPage) {
+            targetPage.scrollIntoView({ behavior: "smooth", block: "start" });
+          }
+        }, 50);
+      }
+    }
+    setIsEditingPage(false);
+    setPageInputValue("");
+  };
+
+  const handlePageInputKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === "Enter") {
+      handlePageInputBlur();
+    } else if (e.key === "Escape") {
+      setIsEditingPage(false);
+      setPageInputValue("");
+    }
+  };
+
   const sendChatMessage = async (message?: string) => {
     const messageToSend = message || chatInput.trim();
     if (!messageToSend || isStreaming || !threadId) {
@@ -1148,7 +1374,7 @@ export default function DeepFocus() {
     }
     
     if (!message) {
-      setChatInput("");
+    setChatInput("");
     }
 
     // Check index status
@@ -1173,10 +1399,10 @@ export default function DeepFocus() {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          fileId,
+      fileId,
           threadId,
           message: messageToSend,
-          systemPrompt,
+      systemPrompt,
         }),
       });
       
@@ -1453,7 +1679,7 @@ export default function DeepFocus() {
             onClick={() => setTool(tool === "highlight" ? "none" : "highlight")}
                 title="Highlight text - Press H (select text to highlight)"
                 className="h-8 px-2 md:px-3"
-              >
+          >
                 <Highlighter className="h-4 w-4 xl:mr-2" />
                 <span className="hidden xl:inline">Highlight</span>
           </Button>
@@ -1463,7 +1689,7 @@ export default function DeepFocus() {
             onClick={() => setTool(tool === "pen" ? "none" : "pen")}
                 title="Draw with pen - Press D"
                 className="h-8 px-2 md:px-3"
-              >
+          >
                 <Pen className="h-4 w-4 xl:mr-2" />
                 <span className="hidden xl:inline">Draw</span>
           </Button>
@@ -1490,32 +1716,87 @@ export default function DeepFocus() {
               </Button>
             </div>
             <div className="flex items-center gap-1 px-1 md:px-2">
-              <span className="text-xs md:text-sm text-muted-foreground font-medium whitespace-nowrap">
-                {currentPage}/{totalPages}
-              </span>
+              {isEditingPage ? (
+                <div className="flex items-center gap-0.5">
+                  <Input
+                    type="text"
+                    value={pageInputValue}
+                    onChange={(e) => setPageInputValue(e.target.value)}
+                    onBlur={handlePageInputBlur}
+                    onKeyDown={handlePageInputKeyDown}
+                    className="h-7 w-12 px-1 text-xs text-center"
+                    placeholder={currentPage.toString()}
+                    autoFocus
+                  />
+                  <span className="text-xs text-muted-foreground">/{totalPages}</span>
+                </div>
+              ) : (
+                <button
+                  onClick={() => {
+                    setIsEditingPage(true);
+                    setPageInputValue(currentPage.toString());
+                  }}
+                  className="text-xs md:text-sm text-muted-foreground font-medium whitespace-nowrap hover:text-foreground transition-colors"
+                  title="Click to jump to page"
+                >
+                  {currentPage}/{totalPages}
+                </button>
+              )}
             </div>
             <div className="flex items-center gap-1 md:gap-2">
               <span className="text-sm font-medium mr-2 hidden xl:inline">Zoom:</span>
-          <Button variant="outline" size="icon" onClick={() => setScale((s) => Math.max(0.5, s - 0.25))} className="h-8 w-8">
+          <Button variant="outline" size="icon" onClick={() => {
+            saveScrollPositionForZoom();
+            isZooming.current = true;
+            const newScale = Math.max(0.5, scale - 0.25);
+            setScale(newScale);
+            setTargetScale(newScale);
+            setTimeout(() => {
+              isZooming.current = false;
+            }, 300);
+          }} className="h-8 w-8">
             <ZoomOut className="h-4 w-4" />
           </Button>
           <div className="relative">
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => setShowZoomDropdown(!showZoomDropdown)}
-              className="h-8 min-w-[60px] px-2 font-mono text-xs"
-            >
-              {Math.round(scale * 100)}%
-            </Button>
-            {showZoomDropdown && (
+            {isEditingZoom ? (
+              <Input
+                type="text"
+                value={zoomInputValue}
+                onChange={(e) => setZoomInputValue(e.target.value)}
+                onBlur={handleZoomInputBlur}
+                onKeyDown={handleZoomInputKeyDown}
+                className="h-8 w-[60px] px-2 font-mono text-xs text-center"
+                placeholder={Math.round(scale * 100).toString()}
+                autoFocus
+              />
+            ) : (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  setIsEditingZoom(true);
+                  setZoomInputValue(Math.round(scale * 100).toString());
+                }}
+                className="h-8 min-w-[60px] px-2 font-mono text-xs"
+              >
+            {Math.round(scale * 100)}%
+              </Button>
+            )}
+            {showZoomDropdown && !isEditingZoom && (
               <div className="absolute right-0 top-full mt-1 bg-background border rounded-md shadow-lg z-50 min-w-[100px]">
                 {zoomPresets.map((preset) => (
                   <button
                     key={preset}
                     onClick={() => {
-                      setScale(preset / 100);
+                      saveScrollPositionForZoom();
+                      isZooming.current = true;
+                      const newScale = preset / 100;
+                      setScale(newScale);
+                      setTargetScale(newScale);
                       setShowZoomDropdown(false);
+                      setTimeout(() => {
+                        isZooming.current = false;
+                      }, 300);
                     }}
                     className={`w-full px-3 py-2 text-sm text-left hover:bg-accent transition-colors ${
                       Math.round(scale * 100) === preset ? "bg-accent font-medium" : ""
@@ -1527,14 +1808,23 @@ export default function DeepFocus() {
               </div>
             )}
           </div>
-          <Button variant="outline" size="icon" onClick={() => setScale((s) => Math.min(3, s + 0.25))} className="h-8 w-8">
+          <Button variant="outline" size="icon" onClick={() => {
+            saveScrollPositionForZoom();
+            isZooming.current = true;
+            const newScale = Math.min(3, scale + 0.25);
+            setScale(newScale);
+            setTargetScale(newScale);
+            setTimeout(() => {
+              isZooming.current = false;
+            }, 300);
+          }} className="h-8 w-8">
             <ZoomIn className="h-4 w-4" />
           </Button>
         </div>
       </div>
 
           {/* Main PDF Area with Thumbnails */}
-          <div className="flex-1 flex overflow-hidden">
+      <div className="flex-1 flex overflow-hidden">
             {/* Thumbnail Sidebar */}
             {showThumbnails && (
               <>
@@ -1551,7 +1841,8 @@ export default function DeepFocus() {
                         <button
                           key={pageNum}
                           onClick={() => handleThumbnailClick(pageNum)}
-                          className={`w-full group relative rounded-md overflow-hidden transition-all ${
+                          onKeyDown={(e) => handleThumbnailKeyDown(e, pageNum)}
+                          className={`thumbnail-button w-full group relative rounded-md overflow-hidden transition-all ${
                             isActive
                               ? "ring-2 ring-primary shadow-lg"
                               : "hover:ring-2 hover:ring-primary/50 shadow-sm"
@@ -1590,7 +1881,7 @@ export default function DeepFocus() {
             )}
 
           {/* PDF Canvas Area */}
-          <div ref={scrollContainerRef} className="flex-1 overflow-auto">
+          <div ref={scrollContainerRef} className="pdf-scroll-container flex-1 overflow-auto">
             <div 
               ref={pagesContainerRef}
               className="p-8 min-h-full"
@@ -1744,10 +2035,10 @@ export default function DeepFocus() {
                     ⚠️ Indexing failed - Click to retry
                   </button>
                 )}
-                <Button variant="ghost" size="icon" onClick={() => setShowSettings(true)}>
-                  <Settings className="h-4 w-4" />
-                </Button>
-              </div>
+              <Button variant="ghost" size="icon" onClick={() => setShowSettings(true)}>
+                <Settings className="h-4 w-4" />
+              </Button>
+            </div>
             </div>
             {isDragOverChat && (
               <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-10">

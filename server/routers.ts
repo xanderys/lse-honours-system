@@ -32,10 +32,14 @@ export const appRouter = router({
         return { success: true };
       }),
     update: publicProcedure
-      .input(z.object({ id: z.number(), name: z.string() }))
+      .input(z.object({ id: z.number(), name: z.string(), color: z.string().optional() }))
       .mutation(async ({ input }) => {
         const { updateModule } = await import("./db");
-        await updateModule(input.id, { name: input.name });
+        const updates: { name: string; color?: string } = { name: input.name };
+        if (input.color) {
+          updates.color = input.color;
+        }
+        await updateModule(input.id, updates);
         return { success: true };
       }),
     delete: publicProcedure

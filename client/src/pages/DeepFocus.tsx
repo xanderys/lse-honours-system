@@ -1283,34 +1283,32 @@ export default function DeepFocus() {
     }
   };
 
-  // Handle thumbnail keyboard navigation - navigate selection without jumping pages
+  // Handle thumbnail keyboard navigation - instantly jump to pages like macOS Preview
   const handleThumbnailKeyDown = (e: React.KeyboardEvent, pageNum: number) => {
     if (e.key === "ArrowUp") {
       e.preventDefault();
+      e.stopPropagation();
       if (pageNum > 1) {
-        setSelectedThumbnail(pageNum - 1);
+        handleThumbnailClick(pageNum - 1);
         // Focus the previous thumbnail
         setTimeout(() => {
           const thumbnailButtons = document.querySelectorAll('.thumbnail-button');
           const prevButton = thumbnailButtons[pageNum - 2] as HTMLButtonElement;
           if (prevButton) prevButton.focus();
-        }, 50);
+        }, 10);
       }
     } else if (e.key === "ArrowDown") {
       e.preventDefault();
+      e.stopPropagation();
       if (pageNum < totalPages) {
-        setSelectedThumbnail(pageNum + 1);
+        handleThumbnailClick(pageNum + 1);
         // Focus the next thumbnail
         setTimeout(() => {
           const thumbnailButtons = document.querySelectorAll('.thumbnail-button');
           const nextButton = thumbnailButtons[pageNum] as HTMLButtonElement;
           if (nextButton) nextButton.focus();
-        }, 50);
+        }, 10);
       }
-    } else if (e.key === "Enter") {
-      e.preventDefault();
-      // Navigate to the selected page
-      handleThumbnailClick(pageNum);
     }
   };
 
@@ -1637,7 +1635,7 @@ export default function DeepFocus() {
   return (
     <div className="h-screen flex flex-col bg-background">
       {/* Header */}
-      <div className="border-b px-4 py-3 flex items-center justify-between">
+      <div className="border-b px-4 py-3 flex items-center justify-between" onClick={() => setSelectedThumbnail(null)}>
         <div className="flex items-center gap-4">
           <Button variant="ghost" size="icon" onClick={() => setLocation(`/module/${file.moduleId}`)}>
             <ArrowLeft className="h-4 w-4" />
@@ -1892,7 +1890,11 @@ export default function DeepFocus() {
             )}
 
           {/* PDF Canvas Area */}
-          <div ref={scrollContainerRef} className="pdf-scroll-container flex-1 overflow-auto">
+          <div 
+            ref={scrollContainerRef} 
+            className="pdf-scroll-container flex-1 overflow-auto"
+            onClick={() => setSelectedThumbnail(null)}
+          >
             <div 
               ref={pagesContainerRef}
               className="p-8 min-h-full"
@@ -1950,6 +1952,7 @@ export default function DeepFocus() {
           <div 
             className="flex flex-col sidebar-container transition-all duration-200"
             style={{ width: `${sidebarWidth}%` }}
+            onClick={() => setSelectedThumbnail(null)}
           >
             {/* Questions section */}
             <div 

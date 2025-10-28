@@ -2151,10 +2151,21 @@ export default function DeepFocus() {
                 chatMessages.map((msg, idx) => (
                   <div
                     key={idx}
+                    draggable={msg.role === "assistant"}
+                    onDragStart={(e) => {
+                      if (msg.role === "assistant") {
+                        e.dataTransfer.effectAllowed = "copy";
+                        e.dataTransfer.setData("text/plain", msg.content);
+                        // Also copy to clipboard
+                        navigator.clipboard.writeText(msg.content).then(() => {
+                          toast.success("Copied to clipboard!");
+                        });
+                      }
+                    }}
                     className={`p-4 rounded-lg ${
                       msg.role === "user"
                         ? "bg-primary text-primary-foreground ml-4"
-                        : "bg-muted mr-4"
+                        : "bg-muted mr-4 cursor-move hover:ring-2 hover:ring-primary/50 transition-all"
                     }`}
                   >
                     {msg.streaming && !msg.content ? (

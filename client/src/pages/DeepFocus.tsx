@@ -408,6 +408,9 @@ export default function DeepFocus() {
         pageContainer.appendChild(textLayerDiv);
         pageContainer.appendChild(annotationCanvas);
 
+        // **CRITICAL FIX**: Append page container to DOM!
+        container.appendChild(pageContainer);
+
         pageElements.push({
           pageNum,
           page,

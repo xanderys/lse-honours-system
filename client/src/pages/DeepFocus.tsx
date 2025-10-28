@@ -176,7 +176,7 @@ export default function DeepFocus() {
   const [indexProgress, setIndexProgress] = useState(0);
   
   // Load system prompt from localStorage (universal across all PDFs)
-  const DEFAULT_SYSTEM_PROMPT = "You are a study assistant. Answer concisely in British English using only the provided document context. Always cite page numbers in your answers.";
+  const DEFAULT_SYSTEM_PROMPT = "You are a study assistant. Answer concisely in British English using only the provided document context. Always cite page numbers in your answers. When answering definition questions, prioritize information from the lecture slides provided.";
   const [systemPrompt, setSystemPrompt] = useState(() => {
     try {
       const saved = localStorage.getItem('studyAssistantSystemPrompt');

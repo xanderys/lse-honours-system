@@ -96,8 +96,56 @@ export function cosineSimilarity(vecA: number[], vecB: number[]): number {
 }
 
 /**
+ * Check if a chunk likely contains a definition
+ */
+export function hasDefinitionIndicators(text: string): boolean {
+  const definitionPatterns = [
+    /\bis defined as\b/i,
+    /\brefers to\b/i,
+    /\bmeans that\b/i,
+    /\bis a\b/i,
+    /\bis an\b/i,
+    /\bdefin(e|ition|ed)\b/i,
+    /\bcharacterized by\b/i,
+    /\bcan be described as\b/i,
+    /\bessentially\b/i,
+    /\bin other words\b/i,
+    /^[A-Z][a-z]+:?\s/m, // Starts with capitalized word (likely a term)
+  ];
+  
+  return definitionPatterns.some(pattern => pattern.test(text));
+}
+
+/**
+ * Calculate priority boost for a chunk
+ * Boosts chunks that likely contain definitions or key concepts
+ */
+function calculatePriorityBoost(chunk: PdfChunk, totalChunks: number): number {
+  let boost = 0;
+  
+  // 1. Early position boost (definitions often appear early in slides)
+  // Boost decreases linearly from 0.15 (first chunk) to 0 (last chunk)
+  const positionBoost = 0.15 * (1 - chunk.chunk_no / totalChunks);
+  boost += positionBoost;
+  
+  // 2. Definition indicator boost
+  if (hasDefinitionIndicators(chunk.content)) {
+    boost += 0.10;
+  }
+  
+  // 3. Short chunk boost (definitions tend to be concise)
+  // Boost chunks between 50-200 tokens (typical definition length)
+  if (chunk.tokens >= 50 && chunk.tokens <= 200) {
+    boost += 0.05;
+  }
+  
+  return boost;
+}
+
+/**
  * Maximal Marginal Relevance (MMR) diversified search
  * Balances relevance with diversity to avoid redundant results
+ * Now with slide prioritization for definitions
  */
 export function mmrSearch(
   queryEmbeds: number[][],
@@ -117,13 +165,20 @@ export function mmrSearch(
     }
   }
   
-  // Calculate similarities for all chunks
-  const candidates = chunks.map(chunk => ({
-    ...chunk,
-    similarity: cosineSimilarity(avgQueryEmbed, chunk.embedding!),
-  }));
+  const totalChunks = chunks.length;
   
-  // Sort by similarity
+  // Calculate similarities for all chunks with priority boosting
+  const candidates = chunks.map(chunk => {
+    const baseSimilarity = cosineSimilarity(avgQueryEmbed, chunk.embedding!);
+    const priorityBoost = calculatePriorityBoost(chunk, totalChunks);
+    
+    return {
+      ...chunk,
+      similarity: Math.min(1.0, baseSimilarity + priorityBoost), // Cap at 1.0
+    };
+  });
+  
+  // Sort by boosted similarity
   candidates.sort((a, b) => b.similarity - a.similarity);
   
   // MMR selection
@@ -236,11 +291,16 @@ export async function retrieveContext(
     const queryEmbeds = await embedQueries(queries);
     console.log(`[Retrieval] Query embedding: ${Date.now() - embedStart}ms`);
     
-    // Step 4: MMR search
+    // Step 4: MMR search with slide prioritization
     const searchStart = Date.now();
     const retrieved = mmrSearch(queryEmbeds, index.chunks, RETRIEVAL_TOP_K, MMR_LAMBDA);
     console.log(`[Retrieval] MMR search: ${Date.now() - searchStart}ms`);
     console.log(`[Retrieval] Retrieved ${retrieved.length} chunks`);
+    
+    // Log prioritization info
+    const definitionChunks = retrieved.filter(c => hasDefinitionIndicators(c.content)).length;
+    const avgPageNum = retrieved.reduce((sum, c) => sum + (c.page_start || 0), 0) / retrieved.length;
+    console.log(`[Retrieval] Prioritization: ${definitionChunks} definition-like chunks, avg page ${avgPageNum.toFixed(1)}`);
     
     // Step 5: Compress context
     const compressStart = Date.now();

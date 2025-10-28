@@ -30,8 +30,9 @@ export function buildPrompt(
   const estimateTokens = (text: string) => Math.ceil(text.length / 4);
   
   // System message with instructions
+  // Note: Retrieved chunks are pre-prioritized to favor definitions and early slide content
   const baseSystemPrompt = systemPrompt || 
-    "You are a study assistant. Answer concisely in British English using only the provided document context. Always cite page numbers in your answers.";
+    "You are a study assistant. Answer concisely in British English using only the provided document context. Always cite page numbers in your answers. When answering definition questions, prioritize information from the lecture slides provided.";
   
   const contextInfo = `\n\nDocument: ${pdfContext.fileName}${pdfContext.moduleName ? ` (${pdfContext.moduleName})` : ""}`;
   

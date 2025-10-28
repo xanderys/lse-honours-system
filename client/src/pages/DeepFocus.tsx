@@ -2183,40 +2183,39 @@ export default function DeepFocus() {
                             </div>
                           ))}
                         </div>
-                        {/* Citations */}
-                        {msg.citations && msg.citations.length > 0 && (
-                          <div className="mt-3 pt-3 border-t border-border/50">
-                            <div className="text-xs text-muted-foreground">
-                              <span className="font-medium">Sources: </span>
-                              {msg.citations.slice(0, 5).map((citation: Citation, citationIdx: number) => (
-                                <button
-                                  key={citationIdx}
-                                  onClick={() => handleCitationClick(citation.page_start)}
-                                  className="hover:underline hover:text-primary mr-2"
-                                >
-                                  {citation.page_start === citation.page_end
-                                    ? `p. ${citation.page_start}`
-                                    : `p. ${citation.page_start}-${citation.page_end}`}
-                                </button>
-                              ))}
-                              {msg.citations.length > 5 && (
-                                <span className="text-muted-foreground/70">
-                                  +{msg.citations.length - 5} more
-                                </span>
+                        {/* Citations and Copy button */}
+                        {msg.role === "assistant" && (
+                          <div className="mt-3 pt-3 border-t border-border/50 flex items-center justify-between">
+                            <div className="text-xs text-muted-foreground flex items-center flex-wrap gap-y-1">
+                              {msg.citations && msg.citations.length > 0 && (
+                                <>
+                                  <span className="font-medium">Sources: </span>
+                                  {msg.citations.slice(0, 5).map((citation: Citation, citationIdx: number) => (
+                                    <button
+                                      key={citationIdx}
+                                      onClick={() => handleCitationClick(citation.page_start)}
+                                      className="hover:underline hover:text-primary mr-2"
+                                    >
+                                      {citation.page_start === citation.page_end
+                                        ? `p. ${citation.page_start}`
+                                        : `p. ${citation.page_start}-${citation.page_end}`}
+                                    </button>
+                                  ))}
+                                  {msg.citations.length > 5 && (
+                                    <span className="text-muted-foreground/70">
+                                      +{msg.citations.length - 5} more
+                                    </span>
+                                  )}
+                                </>
                               )}
                             </div>
-                          </div>
-                        )}
-                        {/* Copy button for assistant messages */}
-                        {msg.role === "assistant" && (
-                          <div className={msg.citations && msg.citations.length > 0 ? "mt-2" : "mt-3 pt-3 border-t border-border/50"}>
                             <button
                               onClick={() => {
                                 navigator.clipboard.writeText(msg.content).then(() => {
                                   toast.success("Copied to clipboard!");
                                 });
                               }}
-                              className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors"
+                              className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors flex-shrink-0"
                               title="Copy to clipboard"
                             >
                               <Copy className="h-3.5 w-3.5" />

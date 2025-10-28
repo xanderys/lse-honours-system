@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
-import { ArrowLeft, ZoomIn, ZoomOut, Highlighter, Pen, Send, Settings, X, Square, Eraser, Columns2, FileText, ScrollText, PanelRightOpen, GripVertical, LayoutGrid } from "lucide-react";
+import { ArrowLeft, ZoomIn, ZoomOut, Highlighter, Pen, Send, Settings, X, Square, Eraser, Columns2, FileText, ScrollText, PanelRightOpen, GripVertical, LayoutGrid, Copy } from "lucide-react";
 import { toast } from "sonner";
 import * as pdfjsLib from "pdfjs-dist";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -2162,12 +2162,26 @@ export default function DeepFocus() {
                         });
                       }
                     }}
-                    className={`p-4 rounded-lg ${
+                    className={`relative p-4 rounded-lg group ${
                       msg.role === "user"
                         ? "bg-primary text-primary-foreground ml-4"
                         : "bg-muted mr-4 cursor-move hover:ring-2 hover:ring-primary/50 transition-all"
                     }`}
                   >
+                    {/* Copy button for assistant messages */}
+                    {msg.role === "assistant" && !msg.streaming && (
+                      <button
+                        onClick={() => {
+                          navigator.clipboard.writeText(msg.content).then(() => {
+                            toast.success("Copied to clipboard!");
+                          });
+                        }}
+                        className="absolute top-2 right-2 p-1.5 rounded hover:bg-background/50 transition-colors opacity-0 group-hover:opacity-100"
+                        title="Copy to clipboard"
+                      >
+                        <Copy className="h-3.5 w-3.5" />
+                      </button>
+                    )}
                     {msg.streaming && !msg.content ? (
                       <div className="flex gap-1">
                         <span className="animate-bounce">.</span>

@@ -95,10 +95,6 @@ export default function DeepFocus() {
   const [renderedPages, setRenderedPages] = useState<Map<number, PageRenderInfo>>(new Map());
   const [erasedIds, setErasedIds] = useState<Set<string>>(new Set());
   
-  // Virtual scrolling state
-  const [visiblePages, setVisiblePages] = useState<Set<number>>(new Set());
-  const lastRenderedRange = useRef<{min: number, max: number}>({min: 0, max: 0});
-  const BUFFER_PAGES = 3; // Number of pages to render before/after visible area
   
   // Resizable layout state
   const [sidebarWidth, setSidebarWidth] = useState(33.33); // percentage
@@ -320,10 +316,8 @@ export default function DeepFocus() {
       let pagesToCreatePlaceholder: number[] = [];
       
       if (viewMode === "continuous") {
-        // Create placeholders for ALL pages to maintain scroll height
-        pagesToCreatePlaceholder = Array.from({ length: totalPages }, (_, i) => i + 1);
-        // Render first few pages on initial load
-        pagesToRender = Array.from({ length: Math.min(BUFFER_PAGES * 2 + 1, totalPages) }, (_, i) => i + 1);
+        // Render all pages in continuous mode
+        pagesToRender = Array.from({ length: totalPages }, (_, i) => i + 1);
       } else if (viewMode === "single") {
         // Render only current page
         pagesToRender = [currentPage];
@@ -337,27 +331,7 @@ export default function DeepFocus() {
         pagesToCreatePlaceholder = pagesToRender;
       }
 
-      // Create placeholders first
-      if (viewMode === "continuous") {
-        // Get first page to calculate dimensions
-        const firstPage = await pdfDoc.getPage(1);
-        const viewport = firstPage.getViewport({ scale });
-        
-        pagesToCreatePlaceholder.forEach((pageNum) => {
-          const pageContainer = document.createElement("div");
-          pageContainer.className = "pdf-page-container relative mb-4";
-          pageContainer.setAttribute('data-page-number', pageNum.toString());
-          pageContainer.style.width = `${viewport.width}px`;
-          pageContainer.style.height = `${viewport.height}px`;
-          pageContainer.style.margin = "0 auto";
-          pageContainer.style.display = "block";
-          pageContainer.style.backgroundColor = "#f3f4f6"; // Light gray placeholder
-          
-          container.appendChild(pageContainer);
-        });
-      }
-
-      // Fetch pages that need actual content
+      // Fetch pages that need rendering
       const pagePromises = pagesToRender.map(pageNum => pdfDoc.getPage(pageNum));
       const pages = await Promise.all(pagePromises);
 
@@ -380,36 +354,13 @@ export default function DeepFocus() {
         const dpr = window.devicePixelRatio || 1;
       const viewport = page.getViewport({ scale });
 
-        // Find or create page container
-        let pageContainer: HTMLDivElement;
-        if (viewMode === "continuous") {
-          // Find existing placeholder
-          pageContainer = container.querySelector(`[data-page-number="${pageNum}"]`) as HTMLDivElement;
-          if (pageContainer) {
-            // Clear placeholder styling and content
-            pageContainer.style.backgroundColor = "";
-            pageContainer.innerHTML = "";
-          } else {
-            // Fallback: create new container if placeholder not found
-            pageContainer = document.createElement("div");
-            pageContainer.className = "pdf-page-container relative mb-4";
-            pageContainer.setAttribute('data-page-number', pageNum.toString());
-            pageContainer.style.margin = "0 auto";
-            container.appendChild(pageContainer);
-          }
-        } else {
-          // For single/double mode, create new container
-          pageContainer = document.createElement("div");
-          pageContainer.className = "pdf-page-container relative mb-4";
-          pageContainer.setAttribute('data-page-number', pageNum.toString());
-          pageContainer.style.margin = viewMode === "double" ? "0 10px" : "0 auto";
-          pageContainer.style.display = viewMode === "double" ? "inline-block" : "block";
-          container.appendChild(pageContainer);
-        }
-
-        // Update container dimensions
+        // Create page container
+        const pageContainer = document.createElement("div");
+        pageContainer.className = "pdf-page-container relative mb-4";
+        pageContainer.setAttribute('data-page-number', pageNum.toString());
         pageContainer.style.width = `${viewport.width}px`;
-        pageContainer.style.height = `${viewport.height}px`;
+        pageContainer.style.margin = viewMode === "double" ? "0 10px" : "0 auto";
+        pageContainer.style.display = viewMode === "double" ? "inline-block" : "block";
 
         // Create canvas with high DPI support
         const canvas = document.createElement("canvas");
@@ -545,123 +496,6 @@ export default function DeepFocus() {
     };
   }, [pdfDoc, scale, viewMode, currentPage, totalPages]);
 
-  // Dynamically render pages as they become visible (without clearing container)
-  useEffect(() => {
-    if (viewMode !== "continuous" || !pdfDoc || !pagesContainerRef.current || visiblePages.size === 0) return;
-
-    let isCancelled = false;
-
-    const renderVisiblePages = async () => {
-      const container = pagesContainerRef.current!;
-      const visibleArray = Array.from(visiblePages).sort((a, b) => a - b);
-      const minPage = Math.max(1, Math.min(...visibleArray) - BUFFER_PAGES);
-      const maxPage = Math.min(totalPages, Math.max(...visibleArray) + BUFFER_PAGES);
-
-      // Check if we need to render new pages
-      if (Math.abs(minPage - lastRenderedRange.current.min) <= 2 && 
-          Math.abs(maxPage - lastRenderedRange.current.max) <= 2 &&
-          lastRenderedRange.current.min !== 0) {
-        return; // No significant change, skip rendering
-      }
-
-      lastRenderedRange.current = { min: minPage, max: maxPage };
-
-      // Render each page individually without clearing the entire container
-      for (let pageNum = minPage; pageNum <= maxPage; pageNum++) {
-        if (isCancelled) break;
-
-        const pageContainer = container.querySelector(`[data-page-number="${pageNum}"]`) as HTMLDivElement;
-        if (!pageContainer || pageContainer.querySelector('canvas')) continue; // Already rendered
-
-        try {
-          const page = await pdfDoc.getPage(pageNum);
-          const dpr = window.devicePixelRatio || 1;
-          const viewport = page.getViewport({ scale });
-
-          // Clear placeholder styling
-          pageContainer.style.backgroundColor = "";
-          pageContainer.style.width = `${viewport.width}px`;
-          pageContainer.style.height = `${viewport.height}px`;
-
-          // Create canvas
-          const canvas = document.createElement("canvas");
-          canvas.className = "pdf-canvas shadow-lg bg-white";
-          canvas.height = viewport.height * dpr;
-          canvas.width = viewport.width * dpr;
-          canvas.style.width = `${viewport.width}px`;
-          canvas.style.height = `${viewport.height}px`;
-          canvas.dataset.pageNumber = pageNum.toString();
-
-          // Create text layer
-          const textLayerDiv = document.createElement("div");
-          textLayerDiv.className = "pdf-text-layer";
-          textLayerDiv.style.cssText = `position: absolute; left: 0; top: 0; right: 0; bottom: 0; overflow: hidden; opacity: 0.2; line-height: 1.0; pointer-events: auto;`;
-
-          // Create annotation canvas
-          const annotationCanvas = document.createElement("canvas");
-          const toolClass = tool === "pen" ? "tool-pen" : tool === "eraser" ? "tool-eraser" : "tool-none";
-          annotationCanvas.className = `pdf-annotation-layer ${toolClass}`;
-          annotationCanvas.style.cssText = `position: absolute; left: 0; top: 0;`;
-          annotationCanvas.height = viewport.height * dpr;
-          annotationCanvas.width = viewport.width * dpr;
-          annotationCanvas.style.width = `${viewport.width}px`;
-          annotationCanvas.style.height = `${viewport.height}px`;
-          annotationCanvas.dataset.pageNumber = pageNum.toString();
-
-          pageContainer.appendChild(canvas);
-          pageContainer.appendChild(textLayerDiv);
-          pageContainer.appendChild(annotationCanvas);
-
-          // Render PDF content
-          const context = canvas.getContext("2d", { alpha: false, willReadFrequently: false })!;
-          context.scale(dpr, dpr);
-          await page.render({ canvasContext: context, viewport }).promise;
-
-          // Render text layer
-          const textContent = await page.getTextContent();
-          textContent.items.forEach((item: any) => {
-            const textItem = item as TextItem;
-            if (!textItem.str) return;
-
-            const span = document.createElement("span");
-            span.textContent = textItem.str;
-            const tx = textItem.transform;
-            span.style.cssText = `
-              position: absolute;
-              left: ${tx[4]}px;
-              top: ${tx[5]}px;
-              font-size: ${Math.sqrt(tx[0] * tx[0] + tx[1] * tx[1])}px;
-              transform: scaleX(${tx[0] / Math.sqrt(tx[0] * tx[0] + tx[1] * tx[1])});
-            `;
-            textLayerDiv.appendChild(span);
-          });
-
-          // Update rendered pages map
-          setRenderedPages((prev) => {
-            const next = new Map(prev);
-            next.set(pageNum, {
-              pageNumber: pageNum,
-              canvas: annotationCanvas,
-              textLayer: textLayerDiv,
-              viewport,
-            });
-            return next;
-          });
-        } catch (error) {
-          if (!isCancelled) {
-            console.error(`Error rendering page ${pageNum}:`, error);
-          }
-        }
-      }
-    };
-
-    renderVisiblePages();
-
-    return () => {
-      isCancelled = true;
-    };
-  }, [visiblePages, viewMode, pdfDoc, scale, totalPages, BUFFER_PAGES, tool]);
-
   // Generate thumbnails for all pages
   useEffect(() => {
     if (!pdfDoc || totalPages === 0) return;
@@ -698,43 +532,6 @@ export default function DeepFocus() {
 
     generateThumbnails();
   }, [pdfDoc, totalPages]);
-
-  // IntersectionObserver for virtual scrolling in continuous mode
-  useEffect(() => {
-    if (viewMode !== "continuous" || !pagesContainerRef.current) return;
-
-    const observer = new IntersectionObserver(
-      (entries) => {
-        entries.forEach((entry) => {
-          const pageNum = parseInt(entry.target.getAttribute('data-page-number') || '0');
-          if (!pageNum) return;
-
-          setVisiblePages((prev) => {
-            const next = new Set(prev);
-            if (entry.isIntersecting) {
-              next.add(pageNum);
-            } else {
-              next.delete(pageNum);
-            }
-            return next;
-          });
-        });
-      },
-      {
-        root: scrollContainerRef.current,
-        rootMargin: '400px', // Start loading pages 400px before they're visible
-        threshold: 0,
-      }
-    );
-
-    // Observe all page containers
-    const pageContainers = pagesContainerRef.current.querySelectorAll('.pdf-page-container');
-    pageContainers.forEach((page) => observer.observe(page));
-
-    return () => {
-      observer.disconnect();
-    };
-  }, [viewMode, renderedPages]);
 
   // Restore scroll position after zoom re-render completes (centered on viewport)
   useEffect(() => {

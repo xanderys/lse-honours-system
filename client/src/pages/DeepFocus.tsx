@@ -2168,20 +2168,6 @@ export default function DeepFocus() {
                         : "bg-muted mr-4 cursor-move hover:ring-2 hover:ring-primary/50 transition-all"
                     }`}
                   >
-                    {/* Copy button for assistant messages */}
-                    {msg.role === "assistant" && !msg.streaming && (
-                      <button
-                        onClick={() => {
-                          navigator.clipboard.writeText(msg.content).then(() => {
-                            toast.success("Copied to clipboard!");
-                          });
-                        }}
-                        className="absolute top-2 right-2 p-1.5 rounded hover:bg-background/50 transition-colors opacity-0 group-hover:opacity-100"
-                        title="Copy to clipboard"
-                      >
-                        <Copy className="h-3.5 w-3.5" />
-                      </button>
-                    )}
                     {msg.streaming && !msg.content ? (
                       <div className="flex gap-1">
                         <span className="animate-bounce">.</span>
@@ -2219,6 +2205,23 @@ export default function DeepFocus() {
                                 </span>
                               )}
                             </div>
+                          </div>
+                        )}
+                        {/* Copy button for assistant messages */}
+                        {msg.role === "assistant" && (
+                          <div className={msg.citations && msg.citations.length > 0 ? "mt-2" : "mt-3 pt-3 border-t border-border/50"}>
+                            <button
+                              onClick={() => {
+                                navigator.clipboard.writeText(msg.content).then(() => {
+                                  toast.success("Copied to clipboard!");
+                                });
+                              }}
+                              className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors"
+                              title="Copy to clipboard"
+                            >
+                              <Copy className="h-3.5 w-3.5" />
+                              <span>Copy</span>
+                            </button>
                           </div>
                         )}
                       </>

@@ -322,8 +322,8 @@ export default function DeepFocus() {
       if (viewMode === "continuous") {
         // Create placeholders for ALL pages to maintain scroll height
         pagesToCreatePlaceholder = Array.from({ length: totalPages }, (_, i) => i + 1);
-        // Initial pages will be rendered by the dynamic visibility effect
-        pagesToRender = [];
+        // Render first few pages on initial load
+        pagesToRender = Array.from({ length: Math.min(BUFFER_PAGES * 2 + 1, totalPages) }, (_, i) => i + 1);
       } else if (viewMode === "single") {
         // Render only current page
         pagesToRender = [currentPage];
